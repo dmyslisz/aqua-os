@@ -1,4 +1,5 @@
 #include "aqua/canvas.hpp"
+#include "aqua/font.hpp"
 #include "aqua/font_8x16.hpp"
 #include <cstring>
 #include <cmath>
@@ -247,8 +248,6 @@ void Canvas::draw_char(int x, int y, char c, Color color, int scale) {
         }
     }
 }
-
-#include "aqua/font.hpp"
 
 void Canvas::draw_text_bitmap(int x, int y, const std::string& text, Color color, int scale) {
     int cur_x = x;
