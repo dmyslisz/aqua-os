@@ -41,6 +41,9 @@ public:
     int server_fd() const { return server_fd_; }
     const std::vector<ClientConnection>& clients() const { return clients_; }
 
+    void send_window_resized(uint32_t window_id, uint32_t width, uint32_t height);
+    void send_input_event(uint32_t window_id, MessageType type, const MsgInputEvent& event);
+
 private:
     void handle_new_connection();
     bool handle_client_message(ClientConnection& client);

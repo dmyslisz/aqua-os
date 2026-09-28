@@ -305,6 +305,22 @@ void WindowCompositor::handle_pointer_move(float cursor_x, float cursor_y) {
 
         resizing_window_->set_position(new_x, new_y);
         resizing_window_->set_size(new_w, new_h);
+
+        if (resize_cb_) {
+            resize_cb_(resizing_window_->id(), static_cast<uint32_t>(new_w), static_cast<uint32_t>(new_h));
+        }
+    } else {
+        // Przekaż ruch kursora do okna znajdującego się pod wskaźnikiem
+        for (auto it = windows_.rbegin(); it != windows_.rend(); ++it) {
+            auto& w = *it;
+            if (w->contains(cursor_x, cursor_y)) {
+                if (input_cb_) {
+                    MsgInputEvent ev{1, cursor_x - w->x(), cursor_y - w->y(), 0, 0};
+                    input_cb_(w->id(), MessageType::PointerMotion, ev);
+                }
+                break;
+            }
+        }
     }
 }
 
@@ -362,19 +378,42 @@ void WindowCompositor::handle_pointer_button(uint32_t button, bool pressed, floa
                     return;
                 }
 
-                // 4. Jeśli kliknięto wewnątrz okna, przenieś na wierzch (Focus / Bring to front)
+                // 4. Jeśli kliknięto wewnątrz okna, przenieś na wierzch (Focus / Bring to front) i wyślij zdarzenie kliknięcia
                 if (win->contains(cursor_x, cursor_y)) {
                     windows_.erase(std::next(it).base());
                     windows_.push_back(win);
+
+                    if (input_cb_) {
+                        MsgInputEvent ev{2, cursor_x - win->x(), cursor_y - win->y(), button, 1};
+                        input_cb_(win->id(), MessageType::PointerButton, ev);
+                    }
                     return;
                 }
             }
         } else {
             // Zwolnienie przycisku myszy
+            if (resizing_window_ && resize_cb_) {
+                resize_cb_(resizing_window_->id(), static_cast<uint32_t>(resizing_window_->width()), static_cast<uint32_t>(resizing_window_->height()));
+            }
+
+            // Wyślij zdarzenie zwolnienia przycisku do aktywnego okna
+            if (!windows_.empty() && input_cb_) {
+                auto& top_win = windows_.back();
+                if (top_win->contains(cursor_x, cursor_y)) {
+                    MsgInputEvent ev{2, cursor_x - top_win->x(), cursor_y - top_win->y(), button, 0};
+                    input_cb_(top_win->id(), MessageType::PointerButton, ev);
+                }
+            }
+
             dragging_window_ = nullptr;
             resizing_window_ = nullptr;
         }
     }
+}
+
+uint32_t WindowCompositor::focused_window_id() const {
+    if (windows_.empty()) return 0;
+    return windows_.back()->id();
 }
 
 void WindowCompositor::render_window(const Window& win, float cursor_x, float cursor_y) {

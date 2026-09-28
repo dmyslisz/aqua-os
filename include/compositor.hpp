@@ -1,8 +1,10 @@
 #pragma once
 
 #include "window.hpp"
+#include "aqua_protocol.h"
 #include <vector>
 #include <memory>
+#include <functional>
 #include <GLES3/gl3.h>
 
 namespace aqua {
@@ -21,6 +23,13 @@ public:
     // Obsługa wejścia: ruch myszy, kliknięcia
     void handle_pointer_move(float cursor_x, float cursor_y);
     void handle_pointer_button(uint32_t button, bool pressed, float cursor_x, float cursor_y);
+
+    using WindowResizeCallback = std::function<void(uint32_t window_id, uint32_t width, uint32_t height)>;
+    using WindowInputCallback = std::function<void(uint32_t window_id, MessageType type, const MsgInputEvent& event)>;
+
+    void set_resize_callback(WindowResizeCallback cb) { resize_cb_ = std::move(cb); }
+    void set_input_callback(WindowInputCallback cb) { input_cb_ = std::move(cb); }
+    uint32_t focused_window_id() const;
 
     // Renderowanie wszystkich okien, cieni i kontrolek
     void render();
@@ -66,6 +75,9 @@ private:
     GLint u_pass_{-1};
     GLint u_client_tex_{-1};
     GLint u_has_client_tex_{-1};
+
+    WindowResizeCallback resize_cb_;
+    WindowInputCallback input_cb_;
 };
 
 } // namespace aqua

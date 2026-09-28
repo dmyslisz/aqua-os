@@ -80,6 +80,12 @@ struct MsgInputEvent {
     uint32_t state;
 };
 
+// Payload dla WindowResized wysyłany do klienta przy zmianie rozmiaru okna
+struct MsgWindowResized {
+    uint32_t width;
+    uint32_t height;
+};
+
 #pragma pack(pop)
 
 } // namespace aqua

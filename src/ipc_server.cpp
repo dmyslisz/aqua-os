@@ -397,4 +397,27 @@ void IpcServer::shutdown() {
     }
 }
 
+void IpcServer::send_window_resized(uint32_t window_id, uint32_t width, uint32_t height) {
+    for (const auto& client : clients_) {
+        if (client.window_id == window_id && client.fd >= 0) {
+            MsgHeader hdr{MessageType::WindowResized, sizeof(MsgWindowResized), client.client_id, window_id};
+            MsgWindowResized payload{width, height};
+            ::send(client.fd, &hdr, sizeof(hdr), MSG_DONTWAIT);
+            ::send(client.fd, &payload, sizeof(payload), MSG_DONTWAIT);
+            break;
+        }
+    }
+}
+
+void IpcServer::send_input_event(uint32_t window_id, MessageType type, const MsgInputEvent& event) {
+    for (const auto& client : clients_) {
+        if (client.window_id == window_id && client.fd >= 0) {
+            MsgHeader hdr{type, sizeof(MsgInputEvent), client.client_id, window_id};
+            ::send(client.fd, &hdr, sizeof(hdr), MSG_DONTWAIT);
+            ::send(client.fd, &event, sizeof(event), MSG_DONTWAIT);
+            break;
+        }
+    }
+}
+
 } // namespace aqua

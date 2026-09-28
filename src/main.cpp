@@ -102,18 +102,6 @@ int main() {
         }
     });
 
-    // Podpięcie klawiatury: klawisze ESC (1) lub Q (16) zamykają serwer
-    input.set_key_callback([](const aqua::KeyEvent& e) {
-        if (e.is_press) {
-            std::cout << "[Aqua Event] Klawisz nacisniety: " << e.key << std::endl;
-            // 1 = KEY_ESC, 16 = KEY_Q
-            if (e.key == 1 || e.key == 16) {
-                std::cout << "[Aqua Event] Wcisnieto klawisz wyjscia. Zamykanie..." << std::endl;
-                g_running = false;
-            }
-        }
-    });
-
     // Vertex & Fragment shader tła (macOS Mesh Gradient)
     const char* vs_src = R"(#version 300 es
         layout (location = 0) in vec2 aPos;
@@ -179,13 +167,38 @@ int main() {
     uint64_t frame_count = 0;
     auto last_fps_time = start_time;
 
-    std::cout << "[Aqua] WindowServer dziala! Dotknij gladzika lub rusz mysza, aby sterowac kursorem macOS." << std::endl;
-    std::cout << "[Aqua] Wcisnij klawisz Q lub ESC na klawiaturze laptopa, aby zakonczyc." << std::endl;
-
     aqua::IpcServer ipc;
     if (!ipc.initialize(&compositor, backend.egl_display())) {
         std::cerr << "[OSTRZEŻENIE] Inicjalizacja serwera IPC nie powiodla sie." << std::endl;
     }
+
+    // Przekazywanie zdarzeń zmiany geometrii okna do klienta IPC
+    compositor.set_resize_callback([&ipc](uint32_t win_id, uint32_t w, uint32_t h) {
+        ipc.send_window_resized(win_id, w, h);
+    });
+
+    // Przekazywanie zdarzeń wskaźnika (myszy / touchpada) do klienta IPC
+    compositor.set_input_callback([&ipc](uint32_t win_id, aqua::MessageType type, const aqua::MsgInputEvent& ev) {
+        ipc.send_input_event(win_id, type, ev);
+    });
+
+    // Przekazywanie zdarzeń klawiatury do aktywnego okna
+    input.set_key_callback([&compositor, &ipc](const aqua::KeyEvent& e) {
+        if (e.is_press) {
+            std::cout << "[Aqua Event] Klawisz: " << e.key << std::endl;
+            // 1 = KEY_ESC, 16 = KEY_Q
+            if (e.key == 1 || e.key == 16) {
+                std::cout << "[Aqua Event] Wcisnieto klawisz wyjscia. Zamykanie..." << std::endl;
+                g_running = false;
+                return;
+            }
+        }
+        uint32_t focused_id = compositor.focused_window_id();
+        if (focused_id != 0) {
+            aqua::MsgInputEvent ev{3, 0.0f, 0.0f, e.key, e.is_press ? 1u : 0u};
+            ipc.send_input_event(focused_id, aqua::MessageType::KeyboardKey, ev);
+        }
+    });
 
     std::vector<struct pollfd> fds;
     fds.reserve(16);

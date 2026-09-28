@@ -4,12 +4,14 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <iostream>
 #include <cstring>
 #include <vector>
 #include <cmath>
 #include <chrono>
 #include <thread>
+#include <algorithm>
 #include <gbm.h>
 #include <xf86drm.h>
 #include <drm_fourcc.h>
@@ -251,27 +253,100 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        std::cout << "[Klient SHM] Bufor przekazany pomyslnie! Rozpoczynanie renderowania 60 FPS..." << std::endl;
+        std::cout << "[Klient SHM] Bufor przekazany pomyslnie! Rozpoczynanie interaktywnego renderowania 60 FPS..." << std::endl;
+
+        float mouse_x = -100.0f;
+        float mouse_y = -100.0f;
+        float click_x = -100.0f;
+        float click_y = -100.0f;
+        float click_time = -10.0f;
+        bool click_active = false;
 
         while (true) {
             auto now = std::chrono::steady_clock::now();
             float t = std::chrono::duration<float>(now - start).count();
 
+            // 1. Odpytaj serwer o zdarzenia (WindowResized, ruch myszy, kliknięcia)
+            struct pollfd pfd{sock, POLLIN, 0};
+            while (::poll(&pfd, 1, 0) > 0 && (pfd.revents & POLLIN)) {
+                aqua::MsgHeader in_hdr{};
+                ssize_t n = ::recv(sock, &in_hdr, sizeof(in_hdr), MSG_DONTWAIT);
+                if (n <= 0) break;
+
+                if (in_hdr.type == aqua::MessageType::WindowResized) {
+                    aqua::MsgWindowResized res{};
+                    ::recv(sock, &res, sizeof(res), 0);
+                    if (res.width > 0 && res.height > 0 && (res.width != win_w || res.height != win_h)) {
+                        std::cout << "[Klient SHM] Zmiana geometrii okna: " << res.width << "x" << res.height << std::endl;
+                        ::munmap(pixels, buf_size);
+
+                        win_w = res.width;
+                        win_h = res.height;
+                        stride = win_w * 4;
+                        buf_size = static_cast<size_t>(stride) * win_h;
+
+                        if (::ftruncate(shm_fd, buf_size) == 0) {
+                            pixels = static_cast<uint8_t*>(::mmap(nullptr, buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0));
+                            aqua::MsgAttachShm attach_req{win_w, win_h, stride, 0};
+                            aqua::MsgHeader attach_hdr{aqua::MessageType::AttachShm, sizeof(attach_req), 0, resp.window_id};
+                            send_fd_with_payload(sock, shm_fd, attach_hdr, attach_req);
+                        }
+                    }
+                } else if (in_hdr.type == aqua::MessageType::PointerMotion) {
+                    aqua::MsgInputEvent ev{};
+                    ::recv(sock, &ev, sizeof(ev), 0);
+                    mouse_x = ev.x;
+                    mouse_y = ev.y;
+                } else if (in_hdr.type == aqua::MessageType::PointerButton) {
+                    aqua::MsgInputEvent ev{};
+                    ::recv(sock, &ev, sizeof(ev), 0);
+                    if (ev.state != 0) {
+                        click_x = ev.x;
+                        click_y = ev.y;
+                        click_time = t;
+                        click_active = true;
+                    }
+                } else if (in_hdr.size > 0) {
+                    std::vector<char> skip(in_hdr.size);
+                    ::recv(sock, skip.data(), in_hdr.size, 0);
+                }
+            }
+
+            // 2. Renderowanie interaktywnej sceny do bufora SHM
             for (uint32_t y = 0; y < win_h; ++y) {
                 uint8_t* row = pixels + y * stride;
                 for (uint32_t x = 0; x < win_w; ++x) {
                     float u = static_cast<float>(x) / win_w;
                     float v = static_cast<float>(y) / win_h;
 
-                    // Animowane fale i koła w estetyce macOS
+                    // Bazowa animacja fal i koła
                     float dist = std::hypot(u - 0.5f, v - 0.5f);
                     float wave = std::sin(dist * 18.0f - t * 3.5f) * 0.5f + 0.5f;
 
-                    uint8_t r = static_cast<uint8_t>((std::sin(t * 1.2f + u * 2.5f) * 0.5f + 0.5f) * 220);
-                    uint8_t g = static_cast<uint8_t>((std::cos(t * 0.8f + v * 2.5f) * 0.5f + 0.5f) * 180 * wave);
-                    uint8_t b = static_cast<uint8_t>((0.75f + 0.25f * std::sin(t * 2.0f + dist * 5.0f)) * 255);
+                    // Interaktywna poświata pod kursorem myszy
+                    float mouse_dist = std::hypot(static_cast<float>(x) - mouse_x, static_cast<float>(y) - mouse_y);
+                    float mouse_glow = std::max(0.0f, 1.0f - mouse_dist / 80.0f);
 
-                    // Bezpośredni zapis RGBA (sub-millisecond)
+                    // Rozchodząca się fala po kliknięciu myszą
+                    float click_wave = 0.0f;
+                    if (click_active) {
+                        float dt = t - click_time;
+                        if (dt < 2.5f) {
+                            float r_click = dt * 260.0f;
+                            float d_click = std::abs(std::hypot(static_cast<float>(x) - click_x, static_cast<float>(y) - click_y) - r_click);
+                            click_wave = std::exp(-d_click * 0.12f) * (1.0f - dt / 2.5f);
+                        }
+                    }
+
+                    float rf = (std::sin(t * 1.2f + u * 2.5f) * 0.5f + 0.5f) * 220.0f + mouse_glow * 70.0f + click_wave * 120.0f;
+                    float gf = ((std::cos(t * 0.8f + v * 2.5f) * 0.5f + 0.5f) * 180.0f * wave) + mouse_glow * 90.0f;
+                    float bf = (0.75f + 0.25f * std::sin(t * 2.0f + dist * 5.0f)) * 255.0f + click_wave * 80.0f;
+
+                    uint8_t r = static_cast<uint8_t>(std::clamp(rf, 0.0f, 255.0f));
+                    uint8_t g = static_cast<uint8_t>(std::clamp(gf, 0.0f, 255.0f));
+                    uint8_t b = static_cast<uint8_t>(std::clamp(bf, 0.0f, 255.0f));
+
+                    // Bezpośredni zapis piksela RGBA
                     uint8_t* p = row + x * 4;
                     p[0] = r;
                     p[1] = g;
