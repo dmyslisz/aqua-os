@@ -235,6 +235,72 @@ void WindowCompositor::handle_pointer_move(float cursor_x, float cursor_y) {
     if (dragging_window_ && is_button_down_) {
         // Płynne przesuwanie okna
         dragging_window_->set_position(cursor_x - drag_offset_x_, cursor_y - drag_offset_y_);
+    } else if (resizing_window_ && is_button_down_) {
+        // Płynna zmiana rozmiaru okna (Window Resizing)
+        float dx = cursor_x - resize_start_x_;
+        float dy = cursor_y - resize_start_y_;
+
+        float new_x = resize_orig_x_;
+        float new_y = resize_orig_y_;
+        float new_w = resize_orig_w_;
+        float new_h = resize_orig_h_;
+
+        const float min_w = 300.0f;
+        const float min_h = 180.0f;
+
+        switch (resizing_edge_) {
+            case WindowEdge::Right:
+                new_w = std::max(min_w, resize_orig_w_ + dx);
+                break;
+            case WindowEdge::Bottom:
+                new_h = std::max(min_h, resize_orig_h_ + dy);
+                break;
+            case WindowEdge::BottomRight:
+                new_w = std::max(min_w, resize_orig_w_ + dx);
+                new_h = std::max(min_h, resize_orig_h_ + dy);
+                break;
+            case WindowEdge::Left:
+                if (resize_orig_w_ - dx >= min_w) {
+                    new_x = resize_orig_x_ + dx;
+                    new_w = resize_orig_w_ - dx;
+                }
+                break;
+            case WindowEdge::Top:
+                if (resize_orig_h_ - dy >= min_h) {
+                    new_y = resize_orig_y_ + dy;
+                    new_h = resize_orig_h_ - dy;
+                }
+                break;
+            case WindowEdge::BottomLeft:
+                if (resize_orig_w_ - dx >= min_w) {
+                    new_x = resize_orig_x_ + dx;
+                    new_w = resize_orig_w_ - dx;
+                }
+                new_h = std::max(min_h, resize_orig_h_ + dy);
+                break;
+            case WindowEdge::TopRight:
+                if (resize_orig_h_ - dy >= min_h) {
+                    new_y = resize_orig_y_ + dy;
+                    new_h = resize_orig_h_ - dy;
+                }
+                new_w = std::max(min_w, resize_orig_w_ + dx);
+                break;
+            case WindowEdge::TopLeft:
+                if (resize_orig_w_ - dx >= min_w) {
+                    new_x = resize_orig_x_ + dx;
+                    new_w = resize_orig_w_ - dx;
+                }
+                if (resize_orig_h_ - dy >= min_h) {
+                    new_y = resize_orig_y_ + dy;
+                    new_h = resize_orig_h_ - dy;
+                }
+                break;
+            default:
+                break;
+        }
+
+        resizing_window_->set_position(new_x, new_y);
+        resizing_window_->set_size(new_w, new_h);
     }
 }
 
@@ -262,7 +328,21 @@ void WindowCompositor::handle_pointer_button(uint32_t button, bool pressed, floa
                     return;
                 }
 
-                // 2. Sprawdź chwycenie za pasek tytułowy (Draggable Region)
+                // 2. Sprawdź chwycenie za krawędź do zmiany rozmiaru (Resizing)
+                auto edge = win->hit_test_edge(cursor_x, cursor_y);
+                if (edge != WindowEdge::None) {
+                    resizing_window_ = win;
+                    resizing_edge_ = edge;
+                    resize_start_x_ = cursor_x;
+                    resize_start_y_ = cursor_y;
+                    resize_orig_x_ = win->x();
+                    resize_orig_y_ = win->y();
+                    resize_orig_w_ = win->width();
+                    resize_orig_h_ = win->height();
+                    return;
+                }
+
+                // 3. Sprawdź chwycenie za pasek tytułowy (Draggable Region)
                 if (win->is_in_draggable_region(cursor_x, cursor_y)) {
                     dragging_window_ = win;
                     drag_offset_x_ = cursor_x - win->x();
@@ -273,6 +353,7 @@ void WindowCompositor::handle_pointer_button(uint32_t button, bool pressed, floa
         } else {
             // Zwolnienie przycisku myszy
             dragging_window_ = nullptr;
+            resizing_window_ = nullptr;
         }
     }
 }

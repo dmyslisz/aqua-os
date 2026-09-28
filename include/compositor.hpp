@@ -40,6 +40,15 @@ private:
     float drag_offset_x_{0.0f};
     float drag_offset_y_{0.0f};
 
+    std::shared_ptr<Window> resizing_window_{nullptr};
+    WindowEdge resizing_edge_{WindowEdge::None};
+    float resize_start_x_{0.0f};
+    float resize_start_y_{0.0f};
+    float resize_orig_x_{0.0f};
+    float resize_orig_y_{0.0f};
+    float resize_orig_w_{0.0f};
+    float resize_orig_h_{0.0f};
+
     float cursor_x_{0.0f};
     float cursor_y_{0.0f};
     bool is_button_down_{false};

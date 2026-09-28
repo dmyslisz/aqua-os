@@ -36,6 +36,33 @@ TrafficLightButton Window::hit_test_traffic_lights(float cursor_x, float cursor_
     return TrafficLightButton::None;
 }
 
+WindowEdge Window::hit_test_edge(float cursor_x, float cursor_y) const {
+    const float border = 8.0f; // Strefa uchwytu zmiany rozmiaru
+
+    // Sprawdź czy kursor jest w obrębie obrysu okna (z tolerancją border)
+    if (cursor_x < (x_ - border) || cursor_x > (x_ + width_ + border) ||
+        cursor_y < (y_ - border) || cursor_y > (y_ + height_ + border)) {
+        return WindowEdge::None;
+    }
+
+    bool on_left = cursor_x <= (x_ + border);
+    bool on_right = cursor_x >= (x_ + width_ - border);
+    bool on_top = cursor_y <= (y_ + border);
+    bool on_bottom = cursor_y >= (y_ + height_ - border);
+
+    if (on_top && on_left) return WindowEdge::TopLeft;
+    if (on_top && on_right) return WindowEdge::TopRight;
+    if (on_bottom && on_left) return WindowEdge::BottomLeft;
+    if (on_bottom && on_right) return WindowEdge::BottomRight;
+
+    if (on_left) return WindowEdge::Left;
+    if (on_right) return WindowEdge::Right;
+    if (on_top) return WindowEdge::Top;
+    if (on_bottom) return WindowEdge::Bottom;
+
+    return WindowEdge::None;
+}
+
 bool Window::is_in_draggable_region(float cursor_x, float cursor_y) const {
     if (!contains(cursor_x, cursor_y)) return false;
 

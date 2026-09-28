@@ -13,6 +13,18 @@ enum class TrafficLightButton {
     Maximize
 };
 
+enum class WindowEdge {
+    None,
+    Left,
+    Right,
+    Top,
+    Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight
+};
+
 struct Rect {
     float x{0.0f};
     float y{0.0f};
@@ -47,6 +59,9 @@ public:
 
     // Hit-testing dla Traffic Lights
     TrafficLightButton hit_test_traffic_lights(float cursor_x, float cursor_y) const;
+
+    // Hit-testing dla krawędzi i narożników do zmiany rozmiaru
+    WindowEdge hit_test_edge(float cursor_x, float cursor_y) const;
 
     // Hit-testing dla strefy przeciągania (Draggable Titlebar Region)
     bool is_in_draggable_region(float cursor_x, float cursor_y) const;

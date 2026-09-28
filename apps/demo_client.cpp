@@ -127,42 +127,56 @@ int main() {
 
     std::cout << "[Klient] Bufor dma-buf przekazany do kompozytora! Renderowanie animacji..." << std::endl;
 
-    // 5. Pętla renderowania klienta (animowana zawartość)
+    // 5. Ciągła pętla renderowania klienta (60 FPS do Ctrl+C)
     auto start = std::chrono::steady_clock::now();
-    for (int frame = 0; frame < 600; ++frame) { // Działa przez ~10 sekund
+    uint32_t frame = 0;
+
+    std::vector<uint32_t> local_buffer(win_w * win_h);
+
+    while (true) {
         auto now = std::chrono::steady_clock::now();
         float t = std::chrono::duration<float>(now - start).count();
 
-        // Mapowanie pamięci bufora GPU i rysowanie dynamicznego gradientu
+        // 1. Generowanie animowanego wzorca w buforze lokalnym
+        for (uint32_t y = 0; y < win_h; ++y) {
+            for (uint32_t x = 0; x < win_w; ++x) {
+                float u = static_cast<float>(x) / win_w;
+                float v = static_cast<float>(y) / win_h;
+
+                // Animowane fale i koła w estetyce macOS
+                float dist = std::hypot(u - 0.5f, v - 0.5f);
+                float wave = std::sin(dist * 18.0f - t * 3.5f) * 0.5f + 0.5f;
+
+                uint8_t r = static_cast<uint8_t>((std::sin(t * 1.2f + u * 2.5f) * 0.5f + 0.5f) * 220);
+                uint8_t g = static_cast<uint8_t>((std::cos(t * 0.8f + v * 2.5f) * 0.5f + 0.5f) * 180 * wave);
+                uint8_t b = static_cast<uint8_t>((0.75f + 0.25f * std::sin(t * 2.0f + dist * 5.0f)) * 255);
+
+                local_buffer[y * win_w + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+            }
+        }
+
+        // 2. Kopiowanie do bufora GPU (GBM BO)
         uint32_t map_stride = 0;
         void* map_data = nullptr;
         void* map = gbm_bo_map(bo, 0, 0, win_w, win_h, GBM_BO_TRANSFER_WRITE, &map_stride, &map_data);
 
         if (map) {
-            uint32_t* pixels = static_cast<uint32_t*>(map);
+            char* dst = static_cast<char*>(map);
+            const char* src = reinterpret_cast<const char*>(local_buffer.data());
             for (uint32_t y = 0; y < win_h; ++y) {
-                for (uint32_t x = 0; x < win_w; ++x) {
-                    float u = static_cast<float>(x) / win_w;
-                    float v = static_cast<float>(y) / win_h;
-
-                    // Dynamiczne koła i fale w stylu Apple
-                    float dist = std::hypot(u - 0.5f, v - 0.5f);
-                    float ring = std::sin(dist * 20.0f - t * 4.0f) * 0.5f + 0.5f;
-
-                    uint8_t r = static_cast<uint8_t>((std::sin(t + u * 3.0f) * 0.5f + 0.5f) * 255);
-                    uint8_t g = static_cast<uint8_t>((std::cos(t + v * 3.0f) * 0.5f + 0.5f) * 200 * ring);
-                    uint8_t b = static_cast<uint8_t>((0.8f + 0.2f * std::sin(t * 2.0f)) * 255);
-
-                    pixels[y * (map_stride / 4) + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
-                }
+                std::memcpy(dst + y * map_stride, src + y * win_w * 4, win_w * 4);
             }
             gbm_bo_unmap(bo, map_data);
         }
 
-        // Zgłoszenie klatki (Commit)
+        // 3. Wysłanie powiadomienia o nowej klatce (Commit)
         aqua::MsgHeader commit_hdr{aqua::MessageType::CommitBuffer, 0, 0, resp.window_id};
-        ::send(sock, &commit_hdr, sizeof(commit_hdr), 0);
+        if (::send(sock, &commit_hdr, sizeof(commit_hdr), 0) < 0) {
+            std::cout << "[Klient] Serwer zakonczyl polaczenie." << std::endl;
+            break;
+        }
 
+        frame++;
         std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS
     }
 
