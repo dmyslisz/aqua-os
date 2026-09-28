@@ -1,6 +1,7 @@
 #pragma once
 
 #include "color.hpp"
+#include "font.hpp"
 #include "canvas.hpp"
 #include "window.hpp"
 #include "application.hpp"

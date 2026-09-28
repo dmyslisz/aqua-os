@@ -65,12 +65,18 @@ target_compile_options(aqua-server PRIVATE
 # Biblioteka kliencka libaqua (C++20 UI Toolkit dla aplikacji Aqua OS)
 add_library(aqua-client STATIC
     src/client/canvas.cpp
+    src/client/font.cpp
     src/client/window.cpp
     src/client/application.cpp
 )
 
 target_include_directories(aqua-client PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${FREETYPE_INCLUDE_DIRS}
+)
+
+target_link_libraries(aqua-client PUBLIC
+    ${FREETYPE_LIBRARIES}
 )
 
 target_compile_options(aqua-client PRIVATE

@@ -248,7 +248,9 @@ void Canvas::draw_char(int x, int y, char c, Color color, int scale) {
     }
 }
 
-void Canvas::draw_text(int x, int y, const std::string& text, Color color, int scale) {
+#include "aqua/font.hpp"
+
+void Canvas::draw_text_bitmap(int x, int y, const std::string& text, Color color, int scale) {
     int cur_x = x;
     int char_w = 8 * scale;
     for (char c : text) {
@@ -262,18 +264,18 @@ void Canvas::draw_text(int x, int y, const std::string& text, Color color, int s
     }
 }
 
-void Canvas::draw_text_right(int right_x, int y, const std::string& text, Color color, int scale) {
-    int total_w = measure_text_width(text, scale);
-    draw_text(right_x - total_w, y, text, color, scale);
+void Canvas::draw_text_bitmap_right(int right_x, int y, const std::string& text, Color color, int scale) {
+    int total_w = measure_bitmap_width(text, scale);
+    draw_text_bitmap(right_x - total_w, y, text, color, scale);
 }
 
-void Canvas::draw_text_centered(int cx, int cy, const std::string& text, Color color, int scale) {
-    int total_w = measure_text_width(text, scale);
-    int total_h = font_height(scale);
-    draw_text(cx - total_w / 2, cy - total_h / 2, text, color, scale);
+void Canvas::draw_text_bitmap_centered(int cx, int cy, const std::string& text, Color color, int scale) {
+    int total_w = measure_bitmap_width(text, scale);
+    int total_h = 16 * scale;
+    draw_text_bitmap(cx - total_w / 2, cy - total_h / 2, text, color, scale);
 }
 
-int Canvas::measure_text_width(const std::string& text, int scale) const {
+int Canvas::measure_bitmap_width(const std::string& text, int scale) const {
     size_t len = 0;
     size_t max_len = 0;
     for (char c : text) {
@@ -288,8 +290,70 @@ int Canvas::measure_text_width(const std::string& text, int scale) const {
     return static_cast<int>(max_len * 8 * scale);
 }
 
-int Canvas::font_height(int scale) const {
-    return 16 * scale;
+void Canvas::draw_text(int x, int y, const std::string& text, Color color, uint32_t font_size, bool bold) {
+    if (!buffer_ || width_ == 0 || height_ == 0) return;
+    if (font_size == 0) font_size = 14;
+
+    auto font = bold ? Font::get_bold(font_size) : Font::get_default(font_size);
+    if (!font) {
+        // Fallback do czcionki rastrowej
+        draw_text_bitmap(x, y, text, color, std::max(1, static_cast<int>(font_size) / 16));
+        return;
+    }
+
+    int cur_x = x;
+    int baseline_y = y + font->ascender();
+
+    for (size_t i = 0; i < text.size(); ++i) {
+        char c = text[i];
+        if (c == '\n') {
+            cur_x = x;
+            baseline_y += font->line_height();
+            continue;
+        }
+
+        const Glyph* g = font->get_glyph(static_cast<char32_t>(static_cast<unsigned char>(c)));
+        if (!g) continue;
+
+        int gx0 = cur_x + g->left;
+        int gy0 = baseline_y - g->top;
+
+        for (int r = 0; r < g->rows; ++r) {
+            int py = gy0 + r;
+            if (py < 0 || py >= static_cast<int>(height_)) continue;
+
+            for (int col = 0; col < g->width; ++col) {
+                int px = gx0 + col;
+                if (px < 0 || px >= static_cast<int>(width_)) continue;
+
+                uint8_t cov = g->buffer[r * g->width + col];
+                if (cov > 0) {
+                    uint8_t a = static_cast<uint8_t>((color.a * cov) / 255);
+                    blend_pixel(px, py, Color(color.r, color.g, color.b, a));
+                }
+            }
+        }
+
+        cur_x += g->advance_x;
+    }
+}
+
+void Canvas::draw_text_right(int right_x, int y, const std::string& text, Color color, uint32_t font_size, bool bold) {
+    int w = measure_text_width(text, font_size, bold);
+    draw_text(right_x - w, y, text, color, font_size, bold);
+}
+
+void Canvas::draw_text_centered(int cx, int cy, const std::string& text, Color color, uint32_t font_size, bool bold) {
+    int w = measure_text_width(text, font_size, bold);
+    draw_text(cx - w / 2, cy - static_cast<int>(font_size) / 2, text, color, font_size, bold);
+}
+
+int Canvas::measure_text_width(const std::string& text, uint32_t font_size, bool bold) {
+    auto font = bold ? Font::get_bold(font_size) : Font::get_default(font_size);
+    if (font) {
+        return font->measure_text_width(text);
+    }
+    return measure_bitmap_width(text, std::max(1, static_cast<int>(font_size) / 16));
 }
 
 } // namespace aqua

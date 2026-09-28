@@ -36,13 +36,18 @@ public:
     void draw_gradient_v(int x, int y, int w, int h, Color top, Color bottom);
     void draw_gradient_h(int x, int y, int w, int h, Color left, Color right);
 
-    // Renderowanie tekstu z wbudowaną czcionką rastrową 8x16
+    // Renderowanie tekstu z wbudowaną czcionką rastrową 8x16 (fallback)
     void draw_char(int x, int y, char c, Color color, int scale = 1);
-    void draw_text(int x, int y, const std::string& text, Color color, int scale = 1);
-    void draw_text_right(int right_x, int y, const std::string& text, Color color, int scale = 1);
-    void draw_text_centered(int cx, int cy, const std::string& text, Color color, int scale = 1);
-    int measure_text_width(const std::string& text, int scale = 1) const;
-    int font_height(int scale = 1) const;
+    void draw_text_bitmap(int x, int y, const std::string& text, Color color, int scale = 1);
+    void draw_text_bitmap_right(int right_x, int y, const std::string& text, Color color, int scale = 1);
+    void draw_text_bitmap_centered(int cx, int cy, const std::string& text, Color color, int scale = 1);
+    int measure_bitmap_width(const std::string& text, int scale = 1) const;
+
+    // Renderowanie wygładzonego wektorowego fontu TrueType (FreeType 2)
+    void draw_text(int x, int y, const std::string& text, Color color, uint32_t font_size = 14, bool bold = false);
+    void draw_text_right(int right_x, int y, const std::string& text, Color color, uint32_t font_size = 14, bool bold = false);
+    void draw_text_centered(int cx, int cy, const std::string& text, Color color, uint32_t font_size = 14, bool bold = false);
+    int measure_text_width(const std::string& text, uint32_t font_size = 14, bool bold = false);
 
 private:
     uint8_t* buffer_{nullptr};

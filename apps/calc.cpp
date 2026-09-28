@@ -24,7 +24,7 @@ struct CalcButton {
     aqua::Color bg_color;
     aqua::Color bg_pressed;
     aqua::Color text_color;
-    int font_scale{2};
+    uint32_t font_size{22};
 };
 
 } // namespace
@@ -50,17 +50,17 @@ public:
             else if (pending_op_ == Op::Mul) op_sym = "x";
             else if (pending_op_ == Op::Div) op_sym = "/";
             std::string prev_str = format_number(operand_) + " " + op_sym;
-            canvas.draw_text_right(width() - 20, 42, prev_str, aqua::Color::hex(0x8E8E93), 1);
+            canvas.draw_text_right(width() - 20, 36, prev_str, aqua::Color::hex(0x8E8E93), 14, false);
         }
 
         // Główny wynik (duży tekst z automatycznym skalowaniem)
         std::string disp = display_text_;
-        int scale = 3;
-        if (disp.length() > 9) scale = 2;
-        if (disp.length() > 14) scale = 1;
+        uint32_t font_size = 46;
+        if (disp.length() > 8) font_size = 32;
+        if (disp.length() > 12) font_size = 22;
 
-        int text_y = (scale == 3) ? 62 : ((scale == 2) ? 72 : 82);
-        canvas.draw_text_right(width() - 18, text_y, disp, aqua::Color::White, scale);
+        int text_y = (font_size == 46) ? 58 : ((font_size == 32) ? 68 : 78);
+        canvas.draw_text_right(width() - 18, text_y, disp, aqua::Color::White, font_size, false);
 
         // 3. Rysowanie przycisków
         const int start_x = 14;
@@ -96,10 +96,10 @@ public:
 
             canvas.fill_rounded_rect(bx, by, bw, btn_h, radius, bg);
 
-            // Wyśrodkowany tekst przycisku
+            // Wyśrodkowany tekst przycisku z gładkim fontem
             int cx = bx + bw / 2;
             int cy = by + btn_h / 2;
-            canvas.draw_text_centered(cx, cy, btn.label, tc, btn.font_scale);
+            canvas.draw_text_centered(cx, cy, btn.label, tc, btn.font_size, true);
         }
     }
 
@@ -182,33 +182,33 @@ private:
         auto btn_op_p = aqua::Color::MacOrangePressed;
 
         // Wiersz 0
-        buttons_.push_back({"AC",  0, 0, 1, btn_fn,  btn_fn_p,  aqua::Color::Black, 1});
-        buttons_.push_back({"+/-", 1, 0, 1, btn_fn,  btn_fn_p,  aqua::Color::Black, 1});
-        buttons_.push_back({"%",   2, 0, 1, btn_fn,  btn_fn_p,  aqua::Color::Black, 1});
-        buttons_.push_back({"/",   3, 0, 1, btn_op,  btn_op_p,  aqua::Color::White, 2});
+        buttons_.push_back({"AC",  0, 0, 1, btn_fn,  btn_fn_p,  aqua::Color::Black, 18});
+        buttons_.push_back({"+/-", 1, 0, 1, btn_fn,  btn_fn_p,  aqua::Color::Black, 18});
+        buttons_.push_back({"%",   2, 0, 1, btn_fn,  btn_fn_p,  aqua::Color::Black, 18});
+        buttons_.push_back({"/",   3, 0, 1, btn_op,  btn_op_p,  aqua::Color::White, 22});
 
         // Wiersz 1
-        buttons_.push_back({"7",   0, 1, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"8",   1, 1, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"9",   2, 1, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"x",   3, 1, 1, btn_op,  btn_op_p,  aqua::Color::White, 2});
+        buttons_.push_back({"7",   0, 1, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"8",   1, 1, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"9",   2, 1, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"x",   3, 1, 1, btn_op,  btn_op_p,  aqua::Color::White, 22});
 
         // Wiersz 2
-        buttons_.push_back({"4",   0, 2, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"5",   1, 2, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"6",   2, 2, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"-",   3, 2, 1, btn_op,  btn_op_p,  aqua::Color::White, 2});
+        buttons_.push_back({"4",   0, 2, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"5",   1, 2, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"6",   2, 2, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"-",   3, 2, 1, btn_op,  btn_op_p,  aqua::Color::White, 22});
 
         // Wiersz 3
-        buttons_.push_back({"1",   0, 3, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"2",   1, 3, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"3",   2, 3, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"+",   3, 3, 1, btn_op,  btn_op_p,  aqua::Color::White, 2});
+        buttons_.push_back({"1",   0, 3, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"2",   1, 3, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"3",   2, 3, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"+",   3, 3, 1, btn_op,  btn_op_p,  aqua::Color::White, 22});
 
         // Wiersz 4
-        buttons_.push_back({"0",   0, 4, 2, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({".",   2, 4, 1, btn_num, btn_num_p, aqua::Color::White, 2});
-        buttons_.push_back({"=",   3, 4, 1, btn_op,  btn_op_p,  aqua::Color::White, 2});
+        buttons_.push_back({"0",   0, 4, 2, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({".",   2, 4, 1, btn_num, btn_num_p, aqua::Color::White, 22});
+        buttons_.push_back({"=",   3, 4, 1, btn_op,  btn_op_p,  aqua::Color::White, 22});
     }
 
     int hit_test_button(int px, int py) const {

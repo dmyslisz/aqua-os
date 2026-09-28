@@ -29,7 +29,7 @@ public:
         canvas.fill_rect(0, 42, width(), 1, aqua::Color::hex(0x38383C));
 
         // Tytuł okna wyśrodkowany
-        canvas.draw_text_centered(width() / 2, 21, "Aqua System Monitor", aqua::Color::White, 1);
+        canvas.draw_text_centered(width() / 2, 21, "Aqua System Monitor", aqua::Color::White, 15, true);
 
         // 3. Segmented Control (Zakładki macOS)
         const int tab_y = 52;
@@ -43,14 +43,14 @@ public:
         canvas.fill_rounded_rect(tab1_x, tab_y, tab_w, tab_h, 6,
             t1_active ? aqua::Color::MacBlue : aqua::Color::hex(0x323236));
         canvas.draw_text_centered(tab1_x + tab_w / 2, tab_y + tab_h / 2, "Hardware",
-            t1_active ? aqua::Color::White : aqua::Color::hex(0xAEAEB2), 1);
+            t1_active ? aqua::Color::White : aqua::Color::hex(0xAEAEB2), 13, t1_active);
 
         // Zakładka 2: Wykres obciążenia
         bool t2_active = (current_tab_ == 1);
         canvas.fill_rounded_rect(tab2_x, tab_y, tab_w, tab_h, 6,
             t2_active ? aqua::Color::MacBlue : aqua::Color::hex(0x323236));
         canvas.draw_text_centered(tab2_x + tab_w / 2, tab_y + tab_h / 2, "Live Graph",
-            t2_active ? aqua::Color::White : aqua::Color::hex(0xAEAEB2), 1);
+            t2_active ? aqua::Color::White : aqua::Color::hex(0xAEAEB2), 13, t2_active);
 
         // 4. Zawartość wybranej zakładki
         if (current_tab_ == 0) {
@@ -65,7 +65,7 @@ public:
         canvas.fill_rect(0, bar_y, width(), 1, aqua::Color::hex(0x38383C));
 
         std::string status_txt = "FreeBSD 14+ | Iris Xe KMS | Direct DRM/GBM/EGL | 60 FPS";
-        canvas.draw_text(16, bar_y + 6, status_txt, aqua::Color::hex(0x8E8E93), 1);
+        canvas.draw_text(16, bar_y + 7, status_txt, aqua::Color::hex(0x8E8E93), 12, false);
     }
 
     void on_mouse_down(float x, float y, uint32_t button) override {
@@ -117,8 +117,8 @@ private:
         int val_x = card_x + 160;
 
         auto draw_row = [&](const std::string& label, const std::string& val, aqua::Color val_col = aqua::Color::White) {
-            canvas.draw_text(label_x, cur_y, label, aqua::Color::hex(0x98989E), 1);
-            canvas.draw_text(val_x, cur_y, val, val_col, 1);
+            canvas.draw_text(label_x, cur_y, label, aqua::Color::hex(0x98989E), 13, false);
+            canvas.draw_text(val_x, cur_y, val, val_col, 13, false);
             cur_y += 24;
         };
 
@@ -135,7 +135,7 @@ private:
         cur_y += 14;
 
         // Paski użycia RAM i CPU
-        canvas.draw_text(label_x, cur_y, "Memory (RAM):", aqua::Color::hex(0x98989E), 1);
+        canvas.draw_text(label_x, cur_y, "Memory (RAM):", aqua::Color::hex(0x98989E), 13, false);
         int bar_w = card_w - 200;
         int bar_h = 14;
         int bar_x = val_x;
@@ -146,16 +146,16 @@ private:
         canvas.fill_rounded_rect(bar_x, cur_y + 1, std::max(4, fill_w), bar_h, 4, aqua::Color::MacPurple);
 
         std::string mem_str = std::to_string(static_cast<int>(current_mem_pct_)) + "%";
-        canvas.draw_text(bar_x + bar_w + 12, cur_y, mem_str, aqua::Color::White, 1);
+        canvas.draw_text(bar_x + bar_w + 12, cur_y, mem_str, aqua::Color::White, 13, false);
 
         cur_y += 26;
-        canvas.draw_text(label_x, cur_y, "CPU Activity:", aqua::Color::hex(0x98989E), 1);
+        canvas.draw_text(label_x, cur_y, "CPU Activity:", aqua::Color::hex(0x98989E), 13, false);
         canvas.fill_rounded_rect(bar_x, cur_y + 1, bar_w, bar_h, 4, aqua::Color::hex(0x1E1E22));
         int fill_cpu = static_cast<int>(bar_w * (current_cpu_pct_ / 100.0f));
         canvas.fill_rounded_rect(bar_x, cur_y + 1, std::max(4, fill_cpu), bar_h, 4, aqua::Color::MacOrange);
 
         std::string cpu_str = std::to_string(static_cast<int>(current_cpu_pct_)) + "%";
-        canvas.draw_text(bar_x + bar_w + 12, cur_y, cpu_str, aqua::Color::White, 1);
+        canvas.draw_text(bar_x + bar_w + 12, cur_y, cpu_str, aqua::Color::White, 13, false);
     }
 
     void render_graph_tab(aqua::Canvas& canvas) {
@@ -177,7 +177,7 @@ private:
             int line_y = gy + (gh * i) / 4;
             canvas.fill_rect(gx, line_y, gw, 1, aqua::Color::hex(0x383842));
             int val = 100 - i * 25;
-            canvas.draw_text_right(gx - 8, line_y - 6, std::to_string(val) + "%", aqua::Color::hex(0x8E8E93), 1);
+            canvas.draw_text_right(gx - 8, line_y - 6, std::to_string(val) + "%", aqua::Color::hex(0x8E8E93), 11, false);
         }
 
         // Rysowanie fali CPU
@@ -199,7 +199,7 @@ private:
 
         // Legenda na dole wykresu
         canvas.fill_circle(gx + 10, gy + gh + 18, 5, aqua::Color::MacBlue);
-        canvas.draw_text(gx + 22, gy + gh + 12, "CPU Core Load History (60 samples)", aqua::Color::White, 1);
+        canvas.draw_text(gx + 22, gy + gh + 12, "CPU Core Load History (60 samples)", aqua::Color::White, 13, false);
     }
 
     void read_system_info() {
