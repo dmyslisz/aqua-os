@@ -29,6 +29,7 @@ add_executable(aqua-server
     src/compositor.cpp
     src/desktop_shell.cpp
     src/font_renderer.cpp
+    src/status_icons.cpp
 )
 
 target_include_directories(aqua-server PRIVATE

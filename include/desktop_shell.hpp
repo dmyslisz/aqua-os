@@ -48,6 +48,7 @@ private:
 
     std::vector<DockItem> dock_items_;
     std::unique_ptr<class FontRenderer> font_;
+    std::unique_ptr<class StatusIconRenderer> status_icons_;
 
     // Shadery
     GLuint shell_program_{0};
