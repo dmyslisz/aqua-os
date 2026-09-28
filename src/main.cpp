@@ -2,6 +2,7 @@
 #include "input_manager.hpp"
 #include "cursor_renderer.hpp"
 #include "compositor.hpp"
+#include "desktop_shell.hpp"
 
 #include <iostream>
 #include <cmath>
@@ -35,8 +36,8 @@ int main() {
     std::signal(SIGTERM, sigint_handler);
 
     std::cout << "========================================================\n"
-              << "  Aqua WindowServer (Quartz FreeBSD) - KROK 3\n"
-              << "  macOS Window Architecture (FullSizeContent & Traffic Lights)\n"
+              << "  Aqua WindowServer (Quartz FreeBSD) - KROK 4\n"
+              << "  macOS Desktop Shell (Top Menu Bar & Animated Floating Dock)\n"
               << "========================================================" << std::endl;
 
     aqua::DrmBackend backend;
@@ -62,19 +63,40 @@ int main() {
         return 1;
     }
 
-    // Tworzymy pierwsze natywne okna w stylu macOS na pulpicie
-    auto win1 = std::make_shared<aqua::Window>(1, 160.0f, 120.0f, 860.0f, 540.0f, "Terminal");
-    auto win2 = std::make_shared<aqua::Window>(2, 600.0f, 280.0f, 560.0f, 380.0f, "Settings");
+    aqua::DesktopShell shell;
+    if (!shell.initialize(backend.width(), backend.height())) {
+        std::cerr << "Inicjalizacja powłoki DesktopShell zakonczona niepowodzeniem!" << std::endl;
+        return 1;
+    }
+
+    // Tworzymy pierwsze okno na pulpicie
+    auto win1 = std::make_shared<aqua::Window>(1, 240.0f, 140.0f, 840.0f, 520.0f, "Terminal");
     compositor.add_window(win1);
-    compositor.add_window(win2);
+
+    static uint32_t next_win_id = 2;
 
     // Podpięcie zdarzeń gładzika / myszy
-    input.set_pointer_callback([&cursor, &compositor](const aqua::PointerEvent& e) {
+    input.set_pointer_callback([&cursor, &compositor, &shell](const aqua::PointerEvent& e) {
         if (e.dx != 0.0 || e.dy != 0.0) {
             cursor.move(static_cast<float>(e.dx), static_cast<float>(e.dy));
             compositor.handle_pointer_move(cursor.x(), cursor.y());
+            shell.handle_pointer_move(cursor.x(), cursor.y());
         }
         if (e.button != 0) {
+            if (e.is_button_press) {
+                // Sprawdź czy kliknięto w Dock
+                int clicked_icon = shell.handle_pointer_click(cursor.x(), cursor.y());
+                if (clicked_icon >= 0) {
+                    std::cout << "[Aqua Shell] Kliknieto w ikone Docka: " << clicked_icon << std::endl;
+                    // Jeśli kliknięto w Terminal (indeks 2) lub Finder (0) - stwórz nowe okno!
+                    float offset = (next_win_id % 5) * 40.0f;
+                    auto new_win = std::make_shared<aqua::Window>(
+                        next_win_id++, 280.0f + offset, 160.0f + offset, 760.0f, 480.0f, "New Window"
+                    );
+                    compositor.add_window(new_win);
+                    return;
+                }
+            }
             compositor.handle_pointer_button(e.button, e.is_button_press, cursor.x(), cursor.y());
         }
     });
@@ -184,10 +206,13 @@ int main() {
             // 2. Okna macOS, Cienie (Drop Shadow) i kontrolki Traffic Lights
             compositor.render();
 
-            // 3. Kursor myszy macOS na samym wierzchu
+            // 3. macOS Shell: Top Menu Bar oraz pływający Dock z animacją powiększania
+            shell.render(cursor.x(), cursor.y(), elapsed);
+
+            // 4. Kursor myszy macOS na samym wierzchu
             cursor.render();
 
-            // 4. Wysłanie klatki do kontrolera KMS (asynchroniczny page-flip)
+            // 5. Wysłanie klatki do kontrolera KMS (asynchroniczny page-flip)
             if (!backend.start_page_flip()) {
                 std::cerr << "[Aqua] Blad start_page_flip!" << std::endl;
                 break;

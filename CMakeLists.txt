@@ -26,6 +26,7 @@ add_executable(aqua-server
     src/cursor_renderer.cpp
     src/window.cpp
     src/compositor.cpp
+    src/desktop_shell.cpp
 )
 
 target_include_directories(aqua-server PRIVATE
