@@ -30,6 +30,7 @@ add_executable(aqua-server
     src/desktop_shell.cpp
     src/font_renderer.cpp
     src/status_icons.cpp
+    src/ipc_server.cpp
 )
 
 target_include_directories(aqua-server PRIVATE
@@ -57,5 +58,27 @@ target_compile_options(aqua-server PRIVATE
     -Wall
     -Wextra
     -Wpedantic
+    -O2
+)
+
+# Niezależna aplikacja kliencka komunikująca się przez dma-buf IPC
+add_executable(aqua-demo-client
+    apps/demo_client.cpp
+)
+
+target_include_directories(aqua-demo-client PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${DRM_INCLUDE_DIRS}
+    ${GBM_INCLUDE_DIRS}
+)
+
+target_link_libraries(aqua-demo-client PRIVATE
+    ${DRM_LIBRARIES}
+    ${GBM_LIBRARIES}
+)
+
+target_compile_options(aqua-demo-client PRIVATE
+    -Wall
+    -Wextra
     -O2
 )

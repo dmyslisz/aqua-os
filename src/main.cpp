@@ -3,6 +3,7 @@
 #include "cursor_renderer.hpp"
 #include "compositor.hpp"
 #include "desktop_shell.hpp"
+#include "ipc_server.hpp"
 
 #include <iostream>
 #include <cmath>
@@ -181,12 +182,20 @@ int main() {
     std::cout << "[Aqua] WindowServer dziala! Dotknij gladzika lub rusz mysza, aby sterowac kursorem macOS." << std::endl;
     std::cout << "[Aqua] Wcisnij klawisz Q lub ESC na klawiaturze laptopa, aby zakonczyc." << std::endl;
 
-    struct pollfd fds[2];
+    aqua::IpcServer ipc;
+    if (!ipc.initialize(&compositor, backend.egl_display())) {
+        std::cerr << "[OSTRZEŻENIE] Inicjalizacja serwera IPC nie powiodla sie." << std::endl;
+    }
+
+    struct pollfd fds[3];
     fds[0].fd = backend.drm_fd();
     fds[0].events = POLLIN;
 
     fds[1].fd = input.fd();
     fds[1].events = POLLIN;
+
+    fds[2].fd = ipc.server_fd();
+    fds[2].events = POLLIN;
 
     bool needs_redraw = true;
 
@@ -231,9 +240,9 @@ int main() {
             }
         }
 
-        // Czekaj na zdarzenie (przerwanie VSync LUB zdarzenie z myszki/klawiatury)
+        // Czekaj na zdarzenie (VSync, mysz/klawiatura LUB komunikat klienta IPC)
         int timeout_ms = backend.waiting_for_flip() ? 20 : 16;
-        int ret = poll(fds, 2, timeout_ms);
+        int ret = poll(fds, 3, timeout_ms);
         if (ret < 0 && errno == EINTR) continue;
 
         // Obsługa przerwania VSync z DRM
@@ -245,11 +254,18 @@ int main() {
         // Obsługa wejścia z touchpada/myszy/klawiatury
         if (fds[1].revents & POLLIN) {
             input.dispatch_events();
-            needs_redraw = true; // natychmiast odśwież kursor
+            needs_redraw = true;
+        }
+
+        // Obsługa komunikatów i klatek z aplikacji klienckich przez IPC
+        if (fds[2].revents & POLLIN) {
+            ipc.dispatch_events();
+            needs_redraw = true;
         }
     }
 
     std::cout << "\n[Aqua] Sprzatanie zasobow..." << std::endl;
+    ipc.shutdown();
     glDeleteBuffers(1, &vbo);
     glDeleteVertexArrays(1, &vao);
     glDeleteProgram(prog);

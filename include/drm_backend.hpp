@@ -38,6 +38,7 @@ public:
     uint32_t refresh_rate() const { return mode_.vrefresh; }
 
     int drm_fd() const { return drm_fd_; }
+    EGLDisplay egl_display() const { return egl_dpy_; }
 
 private:
     bool init_kms();

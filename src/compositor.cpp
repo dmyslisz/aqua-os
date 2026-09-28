@@ -52,6 +52,9 @@ bool WindowCompositor::initialize(uint32_t screen_width, uint32_t screen_height)
         uniform float u_radius;
         uniform vec2 u_cursor_pos;
         uniform int u_pass; // 0 = Shadow, 1 = Window body & Traffic Lights
+        uniform sampler2D u_client_tex;
+        uniform int u_has_client_tex;
+        uniform int u_full_size_content;
 
         // Funkcja Signed Distance Field (SDF) dla zaokrąglonego prostokąta
         float sdRoundedBox(vec2 p, vec2 b, float r) {
@@ -68,11 +71,9 @@ bool WindowCompositor::initialize(uint32_t screen_width, uint32_t screen_height)
 
             if (u_pass == 0) {
                 // RENDEROWANIE MIĘKKIEGO CIENIA (macOS Drop Shadow)
-                // Przesunięcie cienia w dół o 8 px
                 vec2 shadow_p = v_local_pos - (win_center + vec2(0.0, 8.0));
                 float sd_shadow = sdRoundedBox(shadow_p, half_size, u_radius);
                 
-                // Płynny spadek alfa w stylu Apple (odległość 28 px)
                 float shadow_alpha = 1.0 - smoothstep(-5.0, 26.0, sd_shadow);
                 shadow_alpha = pow(shadow_alpha, 1.8) * 0.42;
 
@@ -82,22 +83,26 @@ bool WindowCompositor::initialize(uint32_t screen_width, uint32_t screen_height)
             }
 
             // RENDEROWANIE KORPUSU OKNA
-            if (d > 0.0) discard; // Poza obrysem zaokrąglonego okna
+            if (d > 0.0) discard;
 
-            // 1. Tło korpusu okna (Jasnoszary motyw macOS Tahoe / Big Sur)
-            vec3 bg_color = vec3(0.96, 0.96, 0.97);
-
-            // 2. Tło paska tytułowego (górne 38 px)
             float local_y = v_local_pos.y - u_win_box.y;
             float local_x = v_local_pos.x - u_win_box.x;
-            if (local_y < 38.0) {
-                // Delikatny gradient na pasku
-                bg_color = mix(vec3(0.93, 0.93, 0.94), vec3(0.89, 0.89, 0.90), local_y / 38.0);
-            }
 
-            // 3. Linia separatora pod paskiem tytułowym (1 px)
-            if (abs(local_y - 38.0) < 0.6) {
-                bg_color = vec3(0.80, 0.80, 0.82);
+            // 1. Tło korpusu okna lub treść aplikacji (z dma-buf)
+            vec3 bg_color = vec3(0.96, 0.96, 0.97);
+
+            if (u_has_client_tex == 1) {
+                vec2 uv = vec2(local_x / u_win_box.z, local_y / u_win_box.w);
+                vec4 tex_col = texture(u_client_tex, uv);
+                bg_color = tex_col.rgb;
+            } else {
+                // Domyślny pasek tytułowy gdy brak klienta
+                if (local_y < 38.0) {
+                    bg_color = mix(vec3(0.93, 0.93, 0.94), vec3(0.89, 0.89, 0.90), local_y / 38.0);
+                }
+                if (abs(local_y - 38.0) < 0.6) {
+                    bg_color = vec3(0.80, 0.80, 0.82);
+                }
             }
 
             // 4. KONTROLKI TRAFFIC LIGHTS (Lewy górny róg)
@@ -290,6 +295,8 @@ void WindowCompositor::render_window(const Window& win, float cursor_x, float cu
     glUniform4f(u_win_box, shadow_margin, shadow_margin, win.width(), win.height());
 
     GLint u_pass = glGetUniformLocation(program_, "u_pass");
+    GLint u_has_client_tex = glGetUniformLocation(program_, "u_has_client_tex");
+    GLint u_client_tex = glGetUniformLocation(program_, "u_client_tex");
 
     glBindVertexArray(vao_);
 
@@ -297,8 +304,17 @@ void WindowCompositor::render_window(const Window& win, float cursor_x, float cu
     glUniform1i(u_pass, 0);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // PRZEBIEG 2: RENDEROWANIE KORPUSU OKNA I TRAFFIC LIGHTS
+    // PRZEBIEG 2: RENDEROWANIE KORPUSU OKNA (LUB TREŚCI KLIENTA) I TRAFFIC LIGHTS
     glUniform1i(u_pass, 1);
+    if (win.has_texture()) {
+        glUniform1i(u_has_client_tex, 1);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, win.texture_id());
+        glUniform1i(u_client_tex, 1);
+    } else {
+        glUniform1i(u_has_client_tex, 0);
+    }
+
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
