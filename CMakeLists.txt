@@ -24,6 +24,8 @@ add_executable(aqua-server
     src/drm_backend.cpp
     src/input_manager.cpp
     src/cursor_renderer.cpp
+    src/window.cpp
+    src/compositor.cpp
 )
 
 target_include_directories(aqua-server PRIVATE

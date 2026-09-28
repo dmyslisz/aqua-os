@@ -1,6 +1,7 @@
 #include "drm_backend.hpp"
 #include "input_manager.hpp"
 #include "cursor_renderer.hpp"
+#include "compositor.hpp"
 
 #include <iostream>
 #include <cmath>
@@ -34,8 +35,8 @@ int main() {
     std::signal(SIGTERM, sigint_handler);
 
     std::cout << "========================================================\n"
-              << "  Aqua WindowServer (Quartz FreeBSD) - KROK 2\n"
-              << "  DRM/KMS + GBM + EGL + libinput (Gładzik/Klawiatura/Kursor)\n"
+              << "  Aqua WindowServer (Quartz FreeBSD) - KROK 3\n"
+              << "  macOS Window Architecture (FullSizeContent & Traffic Lights)\n"
               << "========================================================" << std::endl;
 
     aqua::DrmBackend backend;
@@ -55,13 +56,26 @@ int main() {
         return 1;
     }
 
-    // Podpięcie obsługi zdarzeń wskaźnika (gładzik / mysz)
-    input.set_pointer_callback([&cursor](const aqua::PointerEvent& e) {
+    aqua::WindowCompositor compositor;
+    if (!compositor.initialize(backend.width(), backend.height())) {
+        std::cerr << "Inicjalizacja kompozytora zakonczona niepowodzeniem!" << std::endl;
+        return 1;
+    }
+
+    // Tworzymy pierwsze natywne okna w stylu macOS na pulpicie
+    auto win1 = std::make_shared<aqua::Window>(1, 160.0f, 120.0f, 860.0f, 540.0f, "Terminal");
+    auto win2 = std::make_shared<aqua::Window>(2, 600.0f, 280.0f, 560.0f, 380.0f, "Settings");
+    compositor.add_window(win1);
+    compositor.add_window(win2);
+
+    // Podpięcie zdarzeń gładzika / myszy
+    input.set_pointer_callback([&cursor, &compositor](const aqua::PointerEvent& e) {
         if (e.dx != 0.0 || e.dy != 0.0) {
             cursor.move(static_cast<float>(e.dx), static_cast<float>(e.dy));
+            compositor.handle_pointer_move(cursor.x(), cursor.y());
         }
-        if (e.is_button_press) {
-            std::cout << "[Aqua Event] Klikniecie przycisku myszy: " << e.button << std::endl;
+        if (e.button != 0) {
+            compositor.handle_pointer_button(e.button, e.is_button_press, cursor.x(), cursor.y());
         }
     });
 
@@ -167,10 +181,13 @@ int main() {
             glBindVertexArray(vao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            // 2. Kursor myszy macOS
+            // 2. Okna macOS, Cienie (Drop Shadow) i kontrolki Traffic Lights
+            compositor.render();
+
+            // 3. Kursor myszy macOS na samym wierzchu
             cursor.render();
 
-            // 3. Wysłanie klatki do kontrolera KMS (asynchroniczny page-flip)
+            // 4. Wysłanie klatki do kontrolera KMS (asynchroniczny page-flip)
             if (!backend.start_page_flip()) {
                 std::cerr << "[Aqua] Blad start_page_flip!" << std::endl;
                 break;
