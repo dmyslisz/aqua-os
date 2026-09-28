@@ -36,7 +36,7 @@ struct Color {
     }
 
     // Blendowanie dwóch kolorów (this over dst)
-    Color blend_over(Color dst) const {
+    constexpr Color blend_over(Color dst) const {
         if (a == 255) return *this;
         if (a == 0) return dst;
 
@@ -51,31 +51,55 @@ struct Color {
         return Color(out_r, out_g, out_b, out_a);
     }
 
-    // Paleta kolorów macOS Sequoia / Aqua
-    static inline const Color Clear{0, 0, 0, 0};
-    static inline const Color Black{0, 0, 0, 255};
-    static inline const Color White{255, 255, 255, 255};
+    // Deklaracje standardowych barw macOS Sequoia / Aqua
+    static const Color Clear;
+    static const Color Black;
+    static const Color White;
     
     // Tła okien i paneli
-    static inline const Color MacDarkBg{32, 32, 34, 255};          // Ciemne tło okna kalkulatora/terminala
-    static inline const Color MacDisplayBg{24, 24, 26, 255};       // Ciemniejszy wyświetlacz
-    static inline const Color MacWindowBg{242, 242, 247, 255};     // Jasne tło okna macOS
-    static inline const Color MacTitleBarBg{235, 235, 240, 255};   // Pasek tytułowy
-    static inline const Color MacBorder{50, 50, 54, 255};          // Subtelna ramka ciemna
-    static inline const Color MacLightBorder{210, 210, 215, 255};  // Subtelna ramka jasna
+    static const Color MacDarkBg;
+    static const Color MacDisplayBg;
+    static const Color MacWindowBg;
+    static const Color MacTitleBarBg;
+    static const Color MacBorder;
+    static const Color MacLightBorder;
 
     // Przyciski i akcenty macOS
-    static inline const Color MacOrange{255, 159, 10, 255};        // Pomarańczowy operator (#FF9F0A)
-    static inline const Color MacOrangePressed{204, 125, 5, 255};  // Wciśnięty pomarańcz
-    static inline const Color MacBtnDark{58, 58, 60, 255};         // Ciemnoszary przycisk numeryczny (#3A3A3C)
-    static inline const Color MacBtnDarkPressed{80, 80, 84, 255};  // Wciśnięty ciemnoszary
-    static inline const Color MacBtnLight{165, 165, 165, 255};     // Jasnoszary funkcyjny (#A5A5A5)
-    static inline const Color MacBtnLightPressed{210, 210, 210, 255};
+    static const Color MacOrange;
+    static const Color MacOrangePressed;
+    static const Color MacBtnDark;
+    static const Color MacBtnDarkPressed;
+    static const Color MacBtnLight;
+    static const Color MacBtnLightPressed;
 
-    static inline const Color MacBlue{0, 122, 255, 255};           // Niebieski akcent macOS (#007AFF)
-    static inline const Color MacGreen{52, 199, 89, 255};          // Zielony (#34C759)
-    static inline const Color MacRed{255, 59, 48, 255};            // Czerwony (#FF3B30)
-    static inline const Color MacPurple{175, 82, 222, 255};        // Fioletowy (#AF52DE)
+    static const Color MacBlue;
+    static const Color MacGreen;
+    static const Color MacRed;
+    static const Color MacPurple;
 };
+
+// Definicje po domknięciu typu Color (zapobiega błędowi incomplete type)
+inline constexpr Color Color::Clear{0, 0, 0, 0};
+inline constexpr Color Color::Black{0, 0, 0, 255};
+inline constexpr Color Color::White{255, 255, 255, 255};
+
+inline constexpr Color Color::MacDarkBg{32, 32, 34, 255};          // Ciemne tło okna kalkulatora/terminala (#202022)
+inline constexpr Color Color::MacDisplayBg{24, 24, 26, 255};       // Ciemniejszy wyświetlacz (#18181A)
+inline constexpr Color Color::MacWindowBg{242, 242, 247, 255};     // Jasne tło okna macOS (#F2F2F7)
+inline constexpr Color Color::MacTitleBarBg{235, 235, 240, 255};   // Pasek tytułowy
+inline constexpr Color Color::MacBorder{50, 50, 54, 255};          // Subtelna ramka ciemna
+inline constexpr Color Color::MacLightBorder{210, 210, 215, 255};  // Subtelna ramka jasna
+
+inline constexpr Color Color::MacOrange{255, 159, 10, 255};        // Pomarańczowy operator (#FF9F0A)
+inline constexpr Color Color::MacOrangePressed{204, 125, 5, 255};  // Wciśnięty pomarańcz
+inline constexpr Color Color::MacBtnDark{58, 58, 60, 255};         // Ciemnoszary przycisk numeryczny (#3A3A3C)
+inline constexpr Color Color::MacBtnDarkPressed{80, 80, 84, 255};  // Wciśnięty ciemnoszary
+inline constexpr Color Color::MacBtnLight{165, 165, 165, 255};     // Jasnoszary funkcyjny (#A5A5A5)
+inline constexpr Color Color::MacBtnLightPressed{210, 210, 210, 255};
+
+inline constexpr Color Color::MacBlue{0, 122, 255, 255};           // Niebieski akcent macOS (#007AFF)
+inline constexpr Color Color::MacGreen{52, 199, 89, 255};          // Zielony (#34C759)
+inline constexpr Color Color::MacRed{255, 59, 48, 255};            // Czerwony (#FF3B30)
+inline constexpr Color Color::MacPurple{175, 82, 222, 255};        // Fioletowy (#AF52DE)
 
 } // namespace aqua

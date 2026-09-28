@@ -5,6 +5,7 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
+#include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
