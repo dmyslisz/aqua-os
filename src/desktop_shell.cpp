@@ -182,9 +182,9 @@ void DesktopShell::render_top_bar(float /*elapsed_time*/) {
     glUseProgram(shell_program_);
     glUniform2f(u_screen_size_, static_cast<float>(screen_w_), static_cast<float>(screen_h_));
 
-    // 1. Tło paska menu (28 px wysokości, macOS 15 Frosted Glass)
+    // 1. Tło paska menu (28 px wysokości, półprzezroczyste szkło macOS 15)
     glUniform4f(u_rect_, 0.0f, 0.0f, static_cast<float>(screen_w_), TOP_BAR_HEIGHT);
-    glUniform4f(u_color_, 0.95f, 0.95f, 0.96f, 0.82f);
+    glUniform4f(u_color_, 0.96f, 0.96f, 0.97f, 0.82f);
     glUniform4f(u_border_color_, 0.0f, 0.0f, 0.0f, 0.12f);
     glUniform1f(u_radius_, 0.0f);
     glUniform1i(u_type_, 0);
@@ -192,30 +192,90 @@ void DesktopShell::render_top_bar(float /*elapsed_time*/) {
     glBindVertexArray(vao_);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // 2. Logo Apple / Aqua
-    glUniform4f(u_rect_, 14.0f, 8.0f, 12.0f, 12.0f);
+    // 2. Autorskie logo systemu Aqua (minimalistyczna kropla/emblemat w stylu macOS)
+    glUniform4f(u_rect_, 14.0f, 7.0f, 13.0f, 14.0f);
     glUniform4f(u_color_, 0.12f, 0.12f, 0.14f, 0.95f);
-    glUniform1f(u_radius_, 3.0f);
+    glUniform1f(u_radius_, 4.0f);
     glUniform1i(u_type_, 2);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // 3. Rysowanie wektorowego tekstu FreeType (jak w macOS 15 na wideo)
-    std::time_t t = std::time(nullptr);
-    std::tm* now = std::localtime(&t);
-    char time_str[32];
-    std::strftime(time_str, sizeof(time_str), "%H:%M", now);
-
+    // 3. Typografia lewej strony: aktywna aplikacja i pozycje menu
     if (font_) {
-        // Pogrubiona nazwa aktywnej aplikacji: "Terminal"
+        // Pogrubiona nazwa aktywnej aplikacji
         font_->draw_text("Terminal", 36.0f, 6.0f, 0x1A1A1CFF);
 
-        // Menu systemowe
-        font_->draw_text("File    Edit    View    Window    Help", 130.0f, 6.0f, 0x3A3A3DFF);
-
-        // Prawa strona: Godzina
-        float time_w = font_->measure_text_width(time_str);
-        font_->draw_text(time_str, static_cast<float>(screen_w_) - time_w - 20.0f, 6.0f, 0x1A1A1CFF);
+        // Standardowe pozycje menu macOS z równymi odstępami
+        const char* menu_items[] = {"File", "Edit", "View", "Window", "Help"};
+        float cur_menu_x = 114.0f;
+        for (const char* item : menu_items) {
+            font_->draw_text(item, cur_menu_x, 6.0f, 0x2C2C2EFF);
+            cur_menu_x += font_->measure_text_width(item) + 16.0f;
+        }
     }
+
+    // 4. Prawa strona: Ikony statusu (Bateria, Wi-Fi, Control Center, Spotlight) i Zegar
+    // Pobranie pełnej daty i godziny w stylu Apple: np. "Pon 28 Wrz 18:10"
+    std::time_t t = std::time(nullptr);
+    std::tm* now = std::localtime(&t);
+    char time_str[64];
+    std::strftime(time_str, sizeof(time_str), "%a %d %b  %H:%M", now);
+
+    float right_margin = 14.0f;
+    float time_w = font_ ? font_->measure_text_width(time_str) : 90.0f;
+    float time_x = screen_w_ - right_margin - time_w;
+
+    if (font_) {
+        font_->draw_text(time_str, time_x, 6.0f, 0x1A1A1CFF);
+    }
+
+    // Odsuwamy się w lewo od zegara na ikony statusu
+    float icons_x = time_x - 14.0f;
+
+    // A. Control Center (Dwie równoległe poziome pigułki - symbol macOS)
+    icons_x -= 16.0f;
+    glUniform4f(u_rect_, icons_x, 8.5f, 14.0f, 4.5f);
+    glUniform4f(u_color_, 0.22f, 0.22f, 0.25f, 0.9f);
+    glUniform1f(u_radius_, 2.0f);
+    glUniform1i(u_type_, 2);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glUniform4f(u_rect_, icons_x, 15.0f, 14.0f, 4.5f);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // B. Lupa Spotlight
+    icons_x -= 18.0f;
+    glUniform4f(u_rect_, icons_x, 8.0f, 10.0f, 10.0f);
+    glUniform4f(u_color_, 0.22f, 0.22f, 0.25f, 0.9f);
+    glUniform1f(u_radius_, 5.0f); // Kółko lupy
+    glUniform1i(u_type_, 2);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // C. Wi-Fi (Symbol fali sieciowej)
+    icons_x -= 20.0f;
+    glUniform4f(u_rect_, icons_x + 3.0f, 9.0f, 9.0f, 9.0f);
+    glUniform4f(u_color_, 0.22f, 0.22f, 0.25f, 0.9f);
+    glUniform1f(u_radius_, 4.0f);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // D. Bateria laptopa HP (Elegancka ramka z wtyczką i poziomem)
+    icons_x -= 26.0f;
+    // Korpus baterii
+    glUniform4f(u_rect_, icons_x, 9.0f, 20.0f, 10.0f);
+    glUniform4f(u_color_, 0.22f, 0.22f, 0.25f, 0.85f);
+    glUniform1f(u_radius_, 2.5f);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // Wnętrze baterii (zielony poziom naładowania 90%)
+    glUniform4f(u_rect_, icons_x + 1.5f, 10.5f, 14.0f, 7.0f);
+    glUniform4f(u_color_, 0.20f, 0.78f, 0.35f, 1.0f); // Zielony macOS Green
+    glUniform1f(u_radius_, 1.5f);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    // Bolec baterii
+    glUniform4f(u_rect_, icons_x + 20.5f, 12.0f, 2.0f, 4.0f);
+    glUniform4f(u_color_, 0.22f, 0.22f, 0.25f, 0.85f);
+    glUniform1f(u_radius_, 1.0f);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
 void DesktopShell::render_dock(float cursor_x, float cursor_y) {
