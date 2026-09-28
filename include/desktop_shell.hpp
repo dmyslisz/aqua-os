@@ -28,7 +28,7 @@ public:
     void handle_pointer_move(float cursor_x, float cursor_y);
     int handle_pointer_click(float cursor_x, float cursor_y); // Zwraca indeks klikniętej ikony Docka (-1 jeśli brak)
 
-    void render(float cursor_x, float cursor_y, float elapsed_time);
+    void render(float cursor_x, float cursor_y, float elapsed_time, GLuint blur_texture = 0);
     void shutdown();
 
     static constexpr float TOP_BAR_HEIGHT = 28.0f;
@@ -45,6 +45,7 @@ private:
 
     float cursor_x_{0.0f};
     float cursor_y_{0.0f};
+    GLuint blur_tex_{0};
 
     std::vector<DockItem> dock_items_;
     std::unique_ptr<class FontRenderer> font_;
@@ -62,6 +63,8 @@ private:
     GLint u_radius_{-1};
     GLint u_type_{-1}; // 0 = Top bar, 1 = Dock body, 2 = Dock icon, 3 = Active dot
     GLint u_border_color_{-1};
+    GLint u_blur_tex_{-1};
+    GLint u_has_blur_{-1};
 };
 
 } // namespace aqua

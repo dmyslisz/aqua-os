@@ -4,6 +4,7 @@
 #include "compositor.hpp"
 #include "desktop_shell.hpp"
 #include "ipc_server.hpp"
+#include "kawase_blur.hpp"
 
 #include <iostream>
 #include <cmath>
@@ -67,6 +68,12 @@ int main() {
     aqua::DesktopShell shell;
     if (!shell.initialize(backend.width(), backend.height())) {
         std::cerr << "Inicjalizacja powłoki DesktopShell zakonczona niepowodzeniem!" << std::endl;
+        return 1;
+    }
+
+    aqua::KawaseBlur blur;
+    if (!blur.initialize(backend.width(), backend.height())) {
+        std::cerr << "Inicjalizacja KawaseBlur nie powiodla sie!" << std::endl;
         return 1;
     }
 
@@ -211,23 +218,34 @@ int main() {
             auto now = std::chrono::steady_clock::now();
             float elapsed = std::chrono::duration<float>(now - start_time).count();
 
-            // 1. Tło pulpitu
+            // KROK 1: Przechwycenie sceny (tapeta + okna) do bufora FBO
+            blur.begin_scene();
+
+            // 1a. Tło pulpitu (macOS Mesh Gradient)
             glUseProgram(prog);
             glUniform1f(time_loc, elapsed);
 
             glBindVertexArray(vao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            // 2. Okna macOS, Cienie (Drop Shadow) i kontrolki Traffic Lights
+            // 1b. Okna macOS, Cienie (Drop Shadow) i kontrolki Traffic Lights
             compositor.render();
 
-            // 3. macOS Shell: Top Menu Bar oraz pływający Dock z animacją powiększania
-            shell.render(cursor.x(), cursor.y(), elapsed);
+            blur.end_scene();
 
-            // 4. Kursor myszy macOS na samym wierzchu
+            // KROK 2: Wieloprzebiegowy Dual-Kawase Blur (tworzy aksamitną teksturę Frosted Glass)
+            blur.process_blur();
+
+            // KROK 3: Rysowanie ostrego tła sceny na ekran
+            blur.draw_scene_to_screen();
+
+            // KROK 4: macOS Shell (Top Menu Bar i Dock próbkujące rozmyte tło z blur.blurred_texture())
+            shell.render(cursor.x(), cursor.y(), elapsed, blur.blurred_texture());
+
+            // KROK 5: Kursor myszy macOS na samym wierzchu
             cursor.render();
 
-            // 5. Wysłanie klatki do kontrolera KMS (asynchroniczny page-flip)
+            // KROK 6: Wysłanie klatki do kontrolera KMS (asynchroniczny page-flip)
             if (!backend.start_page_flip()) {
                 std::cerr << "[Aqua] Blad start_page_flip!" << std::endl;
                 break;
@@ -303,6 +321,9 @@ int main() {
     glDeleteShader(vs);
     glDeleteShader(fs);
 
+    blur.shutdown();
+    shell.shutdown();
+    compositor.shutdown();
     cursor.shutdown();
     input.shutdown();
     backend.shutdown();

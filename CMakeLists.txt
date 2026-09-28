@@ -31,6 +31,7 @@ add_executable(aqua-server
     src/font_renderer.cpp
     src/status_icons.cpp
     src/ipc_server.cpp
+    src/kawase_blur.cpp
 )
 
 target_include_directories(aqua-server PRIVATE

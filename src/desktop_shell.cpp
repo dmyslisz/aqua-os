@@ -72,11 +72,14 @@ bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
         in vec2 v_local_pos;
         out vec4 FragColor;
 
+        uniform vec2 u_screen_size;
         uniform vec4 u_rect;
         uniform vec4 u_color;
         uniform vec4 u_border_color;
         uniform float u_radius;
         uniform int u_type; // 0 = Top Bar, 1 = Dock Glass Body, 2 = Dock Icon, 3 = Active Dot, 4 = Tooltip Badge
+        uniform sampler2D u_blur_tex;
+        uniform int u_has_blur;
 
         float sdRoundedBox(vec2 p, vec2 b, float r) {
             vec2 q = abs(p) - b + vec2(r);
@@ -93,7 +96,15 @@ bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
                 if (d_shadow >= 0.0) {
                     FragColor = vec4(0.0, 0.0, 0.0, 0.18);
                 } else {
-                    FragColor = u_color;
+                    if (u_has_blur == 1) {
+                        vec2 screen_uv = (u_rect.xy + v_local_pos) / u_screen_size;
+                        vec3 blurred = texture(u_blur_tex, screen_uv).rgb;
+                        // macOS Frosted Glass: mleczne zabarwienie matowego szkła
+                        vec3 frosted = mix(blurred, vec3(0.96, 0.96, 0.98), 0.45);
+                        FragColor = vec4(frosted, 0.92);
+                    } else {
+                        FragColor = u_color;
+                    }
                 }
                 return;
             }
@@ -103,6 +114,14 @@ bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
 
             float alpha = clamp(-d, 0.0, 1.0);
             vec4 col = u_color;
+
+            if (u_type == 1 && u_has_blur == 1) {
+                vec2 screen_uv = (u_rect.xy + v_local_pos) / u_screen_size;
+                vec3 blurred = texture(u_blur_tex, screen_uv).rgb;
+                // macOS Sequoia Glass Tint: jasne, krystalicznie matowe szkło
+                vec3 frosted = mix(blurred, vec3(0.97, 0.97, 0.99), 0.50);
+                col = vec4(frosted, 0.82);
+            }
 
             // macOS 15 Glass Border
             if (d > -1.2) {
@@ -134,6 +153,8 @@ bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
     u_border_color_ = glGetUniformLocation(shell_program_, "u_border_color");
     u_radius_ = glGetUniformLocation(shell_program_, "u_radius");
     u_type_ = glGetUniformLocation(shell_program_, "u_type");
+    u_blur_tex_ = glGetUniformLocation(shell_program_, "u_blur_tex");
+    u_has_blur_ = glGetUniformLocation(shell_program_, "u_has_blur");
 
     float quad_vertices[] = {
         0.0f, 0.0f,
@@ -188,15 +209,25 @@ void DesktopShell::render_top_bar(float /*elapsed_time*/) {
     glUseProgram(shell_program_);
     glUniform2f(u_screen_size_, static_cast<float>(screen_w_), static_cast<float>(screen_h_));
 
-    // 1. Tło paska menu (28 px wysokości, półprzezroczyste szkło macOS 15)
+    // 1. Tło paska menu (28 px wysokości, półprzezroczyste matowe szkło macOS)
     glUniform4f(u_rect_, 0.0f, 0.0f, static_cast<float>(screen_w_), TOP_BAR_HEIGHT);
     glUniform4f(u_color_, 0.96f, 0.96f, 0.97f, 0.82f);
     glUniform4f(u_border_color_, 0.0f, 0.0f, 0.0f, 0.12f);
     glUniform1f(u_radius_, 0.0f);
     glUniform1i(u_type_, 0);
 
+    if (blur_tex_ != 0) {
+        glUniform1i(u_has_blur_, 1);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, blur_tex_);
+        glUniform1i(u_blur_tex_, 0);
+    } else {
+        glUniform1i(u_has_blur_, 0);
+    }
+
     glBindVertexArray(vao_);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
     // 2. Autorskie logo systemu Aqua (precyzyjna ikona wektorowa z przezroczystością)
     if (status_icons_) {
@@ -321,8 +352,21 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
     glUniform1f(u_radius_, 18.0f);
     glUniform1i(u_type_, 1);
 
+    if (blur_tex_ != 0) {
+        glUniform1i(u_has_blur_, 1);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, blur_tex_);
+        glUniform1i(u_blur_tex_, 0);
+    } else {
+        glUniform1i(u_has_blur_, 0);
+    }
+
     glBindVertexArray(vao_);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Wyłącz rozmycie dla rysowania ikon i elementów wnętrza docka
+    glUniform1i(u_has_blur_, 0);
 
     // 4. RYSOWANIE IKON WYRÓWNANYCH DO DOLNEJ LINII DOCKA
     // Podstawa ikon: screen_h_ - bottom_margin - padding_y
@@ -393,7 +437,11 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
     }
 }
 
-void DesktopShell::render(float cursor_x, float cursor_y, float elapsed_time) {
+void DesktopShell::render(float cursor_x, float cursor_y, float elapsed_time, GLuint blur_texture) {
+    cursor_x_ = cursor_x;
+    cursor_y_ = cursor_y;
+    blur_tex_ = blur_texture;
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
