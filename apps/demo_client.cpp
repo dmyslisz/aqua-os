@@ -82,8 +82,8 @@ int main(int argc, char* argv[]) {
     std::cout << "[Klient] Polaczono z Aqua WindowServer!" << std::endl;
 
     // 2. Zadanie utworzenia okna
-    const uint32_t win_w = 640;
-    const uint32_t win_h = 400;
+    uint32_t win_w = 640;
+    uint32_t win_h = 400;
 
     aqua::MsgCreateWindow req_create{};
     req_create.width = win_w;
@@ -204,8 +204,8 @@ int main(int argc, char* argv[]) {
         ::close(render_fd);
     } else {
         // --- TRYB SHARED MEMORY (POSIX SHM) ---
-        const uint32_t stride = win_w * 4;
-        const size_t buf_size = static_cast<size_t>(stride) * win_h;
+        uint32_t stride = win_w * 4;
+        size_t buf_size = static_cast<size_t>(stride) * win_h;
 
         int shm_fd = -1;
         std::string shm_name = "/aqua_demo_shm_" + std::to_string(::getpid());
