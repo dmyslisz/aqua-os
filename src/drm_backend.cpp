@@ -187,21 +187,32 @@ bool DrmBackend::init_egl() {
 
     eglBindAPI(EGL_OPENGL_ES_API);
 
-    const EGLint config_attribs[] = {
-        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        EGL_RED_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_ALPHA_SIZE, 0,
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
-        EGL_NONE
-    };
-
-    EGLConfig config;
     EGLint num_configs = 0;
-    if (!eglChooseConfig(egl_dpy_, config_attribs, &config, 1, &num_configs) || num_configs == 0) {
-        std::cerr << "[Aqua EGL BŁĄD] Brak odpowiedniej konfiguracji EGL." << std::endl;
+    if (!eglGetConfigs(egl_dpy_, nullptr, 0, &num_configs) || num_configs == 0) {
+        std::cerr << "[Aqua EGL BŁĄD] Nie udalo sie pobrac liczby konfiguracji EGL." << std::endl;
         return false;
+    }
+
+    std::vector<EGLConfig> configs(num_configs);
+    if (!eglGetConfigs(egl_dpy_, configs.data(), num_configs, &num_configs)) {
+        std::cerr << "[Aqua EGL BŁĄD] Nie udalo sie pobrac konfiguracji EGL." << std::endl;
+        return false;
+    }
+
+    EGLConfig matched_config = nullptr;
+    for (const auto& cfg : configs) {
+        EGLint visual_id = 0;
+        if (eglGetConfigAttrib(egl_dpy_, cfg, EGL_NATIVE_VISUAL_ID, &visual_id)) {
+            if (visual_id == GBM_FORMAT_XRGB8888 || visual_id == GBM_FORMAT_ARGB8888) {
+                matched_config = cfg;
+                break;
+            }
+        }
+    }
+
+    if (!matched_config) {
+        // Fallback do pierwszej konfiguracji
+        matched_config = configs[0];
     }
 
     const EGLint context_attribs[] = {
@@ -209,15 +220,25 @@ bool DrmBackend::init_egl() {
         EGL_NONE
     };
 
-    egl_ctx_ = eglCreateContext(egl_dpy_, config, EGL_NO_CONTEXT, context_attribs);
+    egl_ctx_ = eglCreateContext(egl_dpy_, matched_config, EGL_NO_CONTEXT, context_attribs);
     if (egl_ctx_ == EGL_NO_CONTEXT) {
-        std::cerr << "[Aqua EGL BŁĄD] eglCreateContext zakonczone niepowodzeniem." << std::endl;
+        std::cerr << "[Aqua EGL BŁĄD] eglCreateContext zakonczone niepowodzeniem: 0x" 
+                  << std::hex << eglGetError() << std::dec << std::endl;
         return false;
     }
 
-    egl_surf_ = eglCreateWindowSurface(egl_dpy_, config, reinterpret_cast<EGLNativeWindowType>(gbm_surf_), nullptr);
+    PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC eglCreatePlatformWindowSurfaceEXT =
+        reinterpret_cast<PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC>(eglGetProcAddress("eglCreatePlatformWindowSurfaceEXT"));
+
+    if (eglCreatePlatformWindowSurfaceEXT) {
+        egl_surf_ = eglCreatePlatformWindowSurfaceEXT(egl_dpy_, matched_config, gbm_surf_, nullptr);
+    } else {
+        egl_surf_ = eglCreateWindowSurface(egl_dpy_, matched_config, reinterpret_cast<EGLNativeWindowType>(gbm_surf_), nullptr);
+    }
+
     if (egl_surf_ == EGL_NO_SURFACE) {
-        std::cerr << "[Aqua EGL BŁĄD] eglCreateWindowSurface zakonczone niepowodzeniem." << std::endl;
+        std::cerr << "[Aqua EGL BŁĄD] eglCreateWindowSurface zakonczone niepowodzeniem: 0x" 
+                  << std::hex << eglGetError() << std::dec << std::endl;
         return false;
     }
 
