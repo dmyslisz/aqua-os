@@ -145,37 +145,65 @@ int main() {
     std::cout << "[Aqua] WindowServer dziala! Dotknij gladzika lub rusz mysza, aby sterowac kursorem macOS." << std::endl;
     std::cout << "[Aqua] Wcisnij klawisz Q lub ESC na klawiaturze laptopa, aby zakonczyc." << std::endl;
 
+    struct pollfd fds[2];
+    fds[0].fd = backend.drm_fd();
+    fds[0].events = POLLIN;
+
+    fds[1].fd = input.fd();
+    fds[1].events = POLLIN;
+
+    bool needs_redraw = true;
+
     while (g_running) {
-        // Przetworzenie zdarzeń gładzika i klawiatury
-        input.dispatch_events();
+        // Renderuj nową klatkę tylko jeśli nie czekamy na zakończenie poprzedniego page-flipa
+        if (needs_redraw && !backend.waiting_for_flip()) {
+            auto now = std::chrono::steady_clock::now();
+            float elapsed = std::chrono::duration<float>(now - start_time).count();
 
-        auto now = std::chrono::steady_clock::now();
-        float elapsed = std::chrono::duration<float>(now - start_time).count();
+            // 1. Tło pulpitu
+            glUseProgram(prog);
+            glUniform1f(time_loc, elapsed);
 
-        // 1. Renderowanie tła pulpitu
-        glUseProgram(prog);
-        glUniform1f(time_loc, elapsed);
+            glBindVertexArray(vao);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+            // 2. Kursor myszy macOS
+            cursor.render();
 
-        // 2. Renderowanie nakładki kursora macOS
-        cursor.render();
+            // 3. Wysłanie klatki do kontrolera KMS (asynchroniczny page-flip)
+            if (!backend.start_page_flip()) {
+                std::cerr << "[Aqua] Blad start_page_flip!" << std::endl;
+                break;
+            }
 
-        // 3. Sprzętowa wymiana buforów i oczekiwanie na VSync
-        if (!backend.swap_and_page_flip()) {
-            std::cerr << "[Aqua] Blad swap_and_page_flip!" << std::endl;
-            break;
+            needs_redraw = false;
+            frame_count++;
+
+            float fps_elapsed = std::chrono::duration<float>(now - last_fps_time).count();
+            if (fps_elapsed >= 3.0f) {
+                float fps = frame_count / fps_elapsed;
+                std::cout << "[Aqua Metrics] FPS: " << fps 
+                          << " | Pozycja kursora: (" << cursor.x() << ", " << cursor.y() << ")" << std::endl;
+                frame_count = 0;
+                last_fps_time = now;
+            }
         }
 
-        frame_count++;
-        float fps_elapsed = std::chrono::duration<float>(now - last_fps_time).count();
-        if (fps_elapsed >= 3.0f) {
-            float fps = frame_count / fps_elapsed;
-            std::cout << "[Aqua Metrics] FPS: " << fps 
-                      << " | Pozycja kursora: (" << cursor.x() << ", " << cursor.y() << ")" << std::endl;
-            frame_count = 0;
-            last_fps_time = now;
+        // Czekaj na zdarzenie (przerwanie VSync LUB zdarzenie z myszki/klawiatury)
+        int timeout_ms = backend.waiting_for_flip() ? 20 : 16;
+        int ret = poll(fds, 2, timeout_ms);
+        if (ret < 0 && errno == EINTR) continue;
+
+        // Obsługa przerwania VSync z DRM
+        if (fds[0].revents & POLLIN) {
+            backend.process_drm_events();
+            needs_redraw = true;
+        }
+
+        // Obsługa wejścia z touchpada/myszy/klawiatury
+        if (fds[1].revents & POLLIN) {
+            input.dispatch_events();
+            needs_redraw = true; // natychmiast odśwież kursor
         }
     }
 

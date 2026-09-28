@@ -275,7 +275,7 @@ uint32_t DrmBackend::get_fb_for_bo(struct gbm_bo* bo) {
     return fb->fb_id;
 }
 
-bool DrmBackend::swap_and_page_flip() {
+bool DrmBackend::start_page_flip() {
     // 1. Zrzut bufora GL do gbm_surface
     eglSwapBuffers(egl_dpy_, egl_surf_);
 
@@ -306,36 +306,27 @@ bool DrmBackend::swap_and_page_flip() {
     if (ret != 0) {
         std::cerr << "[Aqua KMS BŁĄD] drmModePageFlip zakonczony błędem: " << ret << std::endl;
         gbm_surface_release_buffer(gbm_surf_, next_bo_);
+        waiting_for_flip_ = false;
         return false;
     }
 
-    // Oczekiwanie na przerwanie VSync od GPU Intela (zero tearingu)
+    return true;
+}
+
+void DrmBackend::process_drm_events() {
     drmEventContext evctx{};
     evctx.version = 2;
     evctx.page_flip_handler = page_flip_handler;
 
-    struct pollfd pfd{};
-    pfd.fd = drm_fd_;
-    pfd.events = POLLIN;
+    drmHandleEvent(drm_fd_, &evctx);
 
-    while (waiting_for_flip_) {
-        int p = poll(&pfd, 1, -1);
-        if (p < 0) {
-            if (errno == EINTR) continue;
-            break;
+    if (!waiting_for_flip_) {
+        // Page flip zakończony sukcesem - zwolnij stary bufor
+        if (current_bo_) {
+            gbm_surface_release_buffer(gbm_surf_, current_bo_);
         }
-        if (pfd.revents & POLLIN) {
-            drmHandleEvent(drm_fd_, &evctx);
-        }
+        current_bo_ = next_bo_;
     }
-
-    // Zwolnij poprzedni bufor
-    if (current_bo_) {
-        gbm_surface_release_buffer(gbm_surf_, current_bo_);
-    }
-    current_bo_ = next_bo_;
-
-    return true;
 }
 
 void DrmBackend::shutdown() {

@@ -28,8 +28,10 @@ public:
     bool initialize(const std::string& card_path = "/dev/dri/card0");
     void shutdown();
 
-    // Wymiana buforów i oczekiwanie na sprzętowy VSync
-    bool swap_and_page_flip();
+    // Wymiana buforów i zgłoszenie page-flip
+    bool start_page_flip();
+    void process_drm_events();
+    bool waiting_for_flip() const { return waiting_for_flip_; }
 
     uint32_t width() const { return mode_.hdisplay; }
     uint32_t height() const { return mode_.vdisplay; }
