@@ -1,80 +1,8 @@
 #include "font_renderer.hpp"
 #include <iostream>
+#include <vector>
 
 namespace aqua {
-
-// Prosta, czytelna bitmapa 8x8 dla znaków ASCII 32..126
-// Wybrane znaki: litery, cyfry, dwukropek, nawiasy, kropka
-static const uint8_t font8x8_basic[128][8] = {
-    [' '] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-    [':'] = {0x00, 0x00, 0x18, 0x18, 0x00, 0x18, 0x18, 0x00},
-    ['.'] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00},
-    ['-'] = {0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00},
-    ['0'] = {0x3C, 0x66, 0x6E, 0x76, 0x66, 0x66, 0x3C, 0x00},
-    ['1'] = {0x18, 0x38, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00},
-    ['2'] = {0x3C, 0x66, 0x06, 0x0C, 0x18, 0x30, 0x7E, 0x00},
-    ['3'] = {0x3C, 0x66, 0x06, 0x1C, 0x06, 0x66, 0x3C, 0x00},
-    ['4'] = {0x0C, 0x1C, 0x34, 0x64, 0x7E, 0x0C, 0x0C, 0x00},
-    ['5'] = {0x7E, 0x60, 0x7C, 0x06, 0x06, 0x66, 0x3C, 0x00},
-    ['6'] = {0x3C, 0x66, 0x60, 0x7C, 0x66, 0x66, 0x3C, 0x00},
-    ['7'] = {0x7E, 0x06, 0x0C, 0x18, 0x30, 0x30, 0x30, 0x00},
-    ['8'] = {0x3C, 0x66, 0x66, 0x3C, 0x66, 0x66, 0x3C, 0x00},
-    ['9'] = {0x3C, 0x66, 0x66, 0x3E, 0x06, 0x66, 0x3C, 0x00},
-
-    ['A'] = {0x18, 0x3C, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x00},
-    ['B'] = {0x7C, 0x66, 0x66, 0x7C, 0x66, 0x66, 0x7C, 0x00},
-    ['C'] = {0x3C, 0x66, 0x60, 0x60, 0x60, 0x66, 0x3C, 0x00},
-    ['D'] = {0x78, 0x6C, 0x66, 0x66, 0x66, 0x6C, 0x78, 0x00},
-    ['E'] = {0x7E, 0x60, 0x60, 0x7C, 0x60, 0x60, 0x7E, 0x00},
-    ['F'] = {0x7E, 0x60, 0x60, 0x7C, 0x60, 0x60, 0x60, 0x00},
-    ['G'] = {0x3C, 0x66, 0x60, 0x6E, 0x66, 0x66, 0x3C, 0x00},
-    ['H'] = {0x66, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x66, 0x00},
-    ['I'] = {0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00},
-    ['J'] = {0x06, 0x06, 0x06, 0x06, 0x06, 0x66, 0x3C, 0x00},
-    ['K'] = {0x66, 0x6C, 0x78, 0x70, 0x78, 0x6C, 0x66, 0x00},
-    ['L'] = {0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x7E, 0x00},
-    ['M'] = {0x63, 0x77, 0x7F, 0x6B, 0x63, 0x63, 0x63, 0x00},
-    ['N'] = {0x66, 0x76, 0x7E, 0x7E, 0x6E, 0x66, 0x66, 0x00},
-    ['O'] = {0x3C, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00},
-    ['P'] = {0x7C, 0x66, 0x66, 0x7C, 0x60, 0x60, 0x60, 0x00},
-    ['Q'] = {0x3C, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x0E, 0x00},
-    ['R'] = {0x7C, 0x66, 0x66, 0x7C, 0x78, 0x6C, 0x66, 0x00},
-    ['S'] = {0x3C, 0x66, 0x60, 0x3C, 0x06, 0x66, 0x3C, 0x00},
-    ['T'] = {0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00},
-    ['U'] = {0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00},
-    ['V'] = {0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x18, 0x00},
-    ['W'] = {0x63, 0x63, 0x63, 0x6B, 0x7F, 0x77, 0x63, 0x00},
-    ['X'] = {0x66, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0x66, 0x00},
-    ['Y'] = {0x66, 0x66, 0x66, 0x3C, 0x18, 0x18, 0x18, 0x00},
-    ['Z'] = {0x7E, 0x06, 0x0C, 0x18, 0x30, 0x60, 0x7E, 0x00},
-
-    ['a'] = {0x00, 0x00, 0x3C, 0x06, 0x3E, 0x66, 0x3B, 0x00},
-    ['b'] = {0x60, 0x60, 0x7C, 0x66, 0x66, 0x66, 0x7C, 0x00},
-    ['c'] = {0x00, 0x00, 0x3C, 0x66, 0x60, 0x66, 0x3C, 0x00},
-    ['d'] = {0x06, 0x06, 0x3E, 0x66, 0x66, 0x66, 0x3B, 0x00},
-    ['e'] = {0x00, 0x00, 0x3C, 0x66, 0x7E, 0x60, 0x3C, 0x00},
-    ['f'] = {0x0E, 0x18, 0x7E, 0x18, 0x18, 0x18, 0x18, 0x00},
-    ['g'] = {0x00, 0x00, 0x3B, 0x66, 0x66, 0x3E, 0x06, 0x3C},
-    ['h'] = {0x60, 0x60, 0x7C, 0x66, 0x66, 0x66, 0x66, 0x00},
-    ['i'] = {0x18, 0x00, 0x38, 0x18, 0x18, 0x18, 0x3C, 0x00},
-    ['j'] = {0x06, 0x00, 0x06, 0x06, 0x06, 0x06, 0x66, 0x3C},
-    ['k'] = {0x60, 0x60, 0x66, 0x6C, 0x78, 0x6C, 0x66, 0x00},
-    ['l'] = {0x38, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00},
-    ['m'] = {0x00, 0x00, 0x76, 0x7F, 0x6B, 0x6B, 0x6B, 0x00},
-    ['n'] = {0x00, 0x00, 0x7C, 0x66, 0x66, 0x66, 0x66, 0x00},
-    ['o'] = {0x00, 0x00, 0x3C, 0x66, 0x66, 0x66, 0x3C, 0x00},
-    ['p'] = {0x00, 0x00, 0x7C, 0x66, 0x66, 0x7C, 0x60, 0x60},
-    ['q'] = {0x00, 0x00, 0x3E, 0x66, 0x66, 0x3E, 0x06, 0x06},
-    ['r'] = {0x00, 0x00, 0x7C, 0x66, 0x60, 0x60, 0x60, 0x00},
-    ['s'] = {0x00, 0x00, 0x3E, 0x60, 0x3C, 0x06, 0x7C, 0x00},
-    ['t'] = {0x18, 0x18, 0x7E, 0x18, 0x18, 0x18, 0x0E, 0x00},
-    ['u'] = {0x00, 0x00, 0x66, 0x66, 0x66, 0x66, 0x3B, 0x00},
-    ['v'] = {0x00, 0x00, 0x66, 0x66, 0x66, 0x3C, 0x18, 0x00},
-    ['w'] = {0x00, 0x00, 0x63, 0x6B, 0x7F, 0x77, 0x36, 0x00},
-    ['x'] = {0x00, 0x00, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0x00},
-    ['y'] = {0x00, 0x00, 0x66, 0x66, 0x66, 0x3E, 0x06, 0x3C},
-    ['z'] = {0x00, 0x00, 0x7E, 0x0C, 0x18, 0x30, 0x7E, 0x00},
-};
 
 FontRenderer::FontRenderer() = default;
 
@@ -82,68 +10,39 @@ FontRenderer::~FontRenderer() {
     shutdown();
 }
 
-void FontRenderer::generate_font_atlas() {
-    // Atlas 128 znaków (16 kolumn po 8 znaków), każdy znak 8x8 px = tekstura 128x64 px
-    std::vector<uint8_t> atlas(128 * 64, 0);
-
-    for (int ch = 0; ch < 128; ++ch) {
-        int col = ch % 16;
-        int row = ch / 16;
-        int start_x = col * 8;
-        int start_y = row * 8;
-
-        for (int y = 0; y < 8; ++y) {
-            uint8_t bits = font8x8_basic[ch][y];
-            for (int x = 0; x < 8; ++x) {
-                if ((bits >> (7 - x)) & 1) {
-                    atlas[(start_y + y) * 128 + (start_x + x)] = 255;
-                }
-            }
-        }
-    }
-
-    glGenTextures(1, &font_texture_);
-    glBindTexture(GL_TEXTURE_2D, font_texture_);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 128, 64, 0, GL_RED, GL_UNSIGNED_BYTE, atlas.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-}
-
 bool FontRenderer::initialize(uint32_t screen_width, uint32_t screen_height) {
     screen_w_ = screen_width;
     screen_h_ = screen_height;
 
-    generate_font_atlas();
+    if (FT_Init_FreeType(&ft_)) {
+        std::cerr << "[Aqua Font] Blad inicjalizacji FreeType!" << std::endl;
+        return false;
+    }
 
     const char* vs_src = R"(#version 300 es
-        layout (location = 0) in vec2 aPos;
-        layout (location = 1) in vec2 aTex;
+        layout (location = 0) in vec4 vertex; // x, y, u, v
         uniform vec2 u_screen_size;
         uniform vec4 u_rect;
-        uniform vec4 u_uv_rect;
-        out vec2 v_uv;
+        out vec2 TexCoords;
 
         void main() {
-            vec2 pixel_pos = u_rect.xy + aPos * u_rect.zw;
+            vec2 pixel_pos = u_rect.xy + vertex.xy * u_rect.zw;
             vec2 ndc = (pixel_pos / u_screen_size) * 2.0 - 1.0;
             ndc.y = -ndc.y;
             gl_Position = vec4(ndc, 0.0, 1.0);
-            v_uv = u_uv_rect.xy + aTex * u_uv_rect.zw;
+            TexCoords = vertex.zw;
         }
     )";
 
     const char* fs_src = R"(#version 300 es
         precision mediump float;
-        in vec2 v_uv;
+        in vec2 TexCoords;
         out vec4 FragColor;
-        uniform sampler2D u_font_tex;
+        uniform sampler2D u_tex;
         uniform vec4 u_color;
 
         void main() {
-            float alpha = texture(u_font_tex, v_uv).r;
-            if (alpha < 0.2) discard;
+            float alpha = texture(u_tex, TexCoords).r;
             FragColor = vec4(u_color.rgb, u_color.a * alpha);
         }
     )";
@@ -166,31 +65,97 @@ bool FontRenderer::initialize(uint32_t screen_width, uint32_t screen_height) {
 
     u_screen_size_ = glGetUniformLocation(program_, "u_screen_size");
     u_rect_ = glGetUniformLocation(program_, "u_rect");
-    u_uv_rect_ = glGetUniformLocation(program_, "u_uv_rect");
     u_color_ = glGetUniformLocation(program_, "u_color");
-
-    float quad_vertices[] = {
-        0.0f, 0.0f,  0.0f, 0.0f,
-        1.0f, 0.0f,  1.0f, 0.0f,
-        0.0f, 1.0f,  0.0f, 1.0f,
-        0.0f, 1.0f,  0.0f, 1.0f,
-        1.0f, 0.0f,  1.0f, 0.0f,
-        1.0f, 1.0f,  1.0f, 1.0f,
-    };
+    u_tex_ = glGetUniformLocation(program_, "u_tex");
 
     glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &vbo_);
-
     glBindVertexArray(vao_);
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+
+    float quad_vertices[] = {
+        0.0f, 0.0f, 0.0f, 0.0f,
+        1.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 1.0f,
+        0.0f, 1.0f, 0.0f, 1.0f,
+        1.0f, 0.0f, 1.0f, 0.0f,
+        1.0f, 1.0f, 1.0f, 1.0f
+    };
     glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
     glEnableVertexAttribArray(0);
 
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+    // Przeszukiwanie standardowych ścieżek fontów we FreeBSD
+    std::vector<std::string> font_candidates = {
+        "/usr/local/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/local/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/local/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/local/share/fonts/cantarell/Cantarell-Regular.otf",
+        "/usr/local/share/fonts/Liberation/LiberationSans-Regular.ttf"
+    };
 
+    for (const auto& path : font_candidates) {
+        if (load_font(path, 13)) {
+            std::cout << "[Aqua Font] Pomyślnie załadowano font wektorowy: " << path << std::endl;
+            break;
+        }
+    }
+
+    return true;
+}
+
+bool FontRenderer::load_font(const std::string& font_path, uint32_t font_size) {
+    if (face_) {
+        FT_Done_Face(face_);
+        face_ = nullptr;
+    }
+
+    if (FT_New_Face(ft_, font_path.c_str(), 0, &face_)) {
+        return false;
+    }
+
+    FT_Set_Pixel_Sizes(face_, 0, font_size);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    // Generujemy glify dla znaków ASCII 32..126
+    for (unsigned char c = 32; c < 128; c++) {
+        if (FT_Load_Char(face_, c, FT_LOAD_RENDER)) {
+            continue;
+        }
+
+        GLuint tex;
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_R8,
+            face_->glyph->bitmap.width,
+            face_->glyph->bitmap.rows,
+            0,
+            GL_RED,
+            GL_UNSIGNED_BYTE,
+            face_->glyph->bitmap.buffer
+        );
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        Character character = {
+            tex,
+            static_cast<int>(face_->glyph->bitmap.width),
+            static_cast<int>(face_->glyph->bitmap.rows),
+            face_->glyph->bitmap_left,
+            face_->glyph->bitmap_top,
+            static_cast<uint32_t>(face_->glyph->advance.x)
+        };
+        characters_[c] = character;
+    }
+
+    is_ready_ = true;
     return true;
 }
 
@@ -199,7 +164,9 @@ void FontRenderer::update_screen_size(uint32_t screen_width, uint32_t screen_hei
     screen_h_ = screen_height;
 }
 
-void FontRenderer::draw_text(const std::string& text, float x, float y, float scale, uint32_t color_rgba) {
+void FontRenderer::draw_text(const std::string& text, float x, float y, uint32_t color_rgba) {
+    if (!is_ready_) return;
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -213,42 +180,59 @@ void FontRenderer::draw_text(const std::string& text, float x, float y, float sc
     glUniform4f(u_color_, r, g, b, a);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, font_texture_);
-
     glBindVertexArray(vao_);
 
-    float char_w = 8.0f * scale;
-    float char_h = 8.0f * scale;
     float cur_x = x;
-
     for (char c : text) {
-        uint8_t ch = static_cast<uint8_t>(c);
-        if (ch > 127) ch = '?';
+        auto it = characters_.find(c);
+        if (it == characters_.end()) continue;
 
-        int col = ch % 16;
-        int row = ch / 16;
+        const auto& ch = it->second;
 
-        float u = col * 8.0f / 128.0f;
-        float v = row * 8.0f / 64.0f;
-        float uw = 8.0f / 128.0f;
-        float vh = 8.0f / 64.0f;
+        float xpos = cur_x + ch.bearing_x;
+        float ypos = y + (12 - ch.bearing_y); // Bazowa linia tekstu (baseline)
+        float w = ch.width;
+        float h = ch.height;
 
-        glUniform4f(u_rect_, cur_x, y, char_w, char_h);
-        glUniform4f(u_uv_rect_, u, v, uw, vh);
+        if (w > 0 && h > 0) {
+            glBindTexture(GL_TEXTURE_2D, ch.texture_id);
+            glUniform4f(u_rect_, xpos, ypos, w, h);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+        }
 
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-        cur_x += char_w;
+        // Advance to 1/64 piksela (bitshift >> 6)
+        cur_x += (ch.advance >> 6);
     }
 
     glDisable(GL_BLEND);
 }
 
+float FontRenderer::measure_text_width(const std::string& text) {
+    if (!is_ready_) return 0.0f;
+    float w = 0.0f;
+    for (char c : text) {
+        auto it = characters_.find(c);
+        if (it != characters_.end()) {
+            w += (it->second.advance >> 6);
+        }
+    }
+    return w;
+}
+
 void FontRenderer::shutdown() {
+    for (auto& pair : characters_) {
+        if (pair.second.texture_id) {
+            glDeleteTextures(1, &pair.second.texture_id);
+        }
+    }
+    characters_.clear();
+
+    if (face_) { FT_Done_Face(face_); face_ = nullptr; }
+    if (ft_) { FT_Done_FreeType(ft_); ft_ = nullptr; }
     if (vao_) { glDeleteVertexArrays(1, &vao_); vao_ = 0; }
     if (vbo_) { glDeleteBuffers(1, &vbo_); vbo_ = 0; }
     if (program_) { glDeleteProgram(program_); program_ = 0; }
-    if (font_texture_) { glDeleteTextures(1, &font_texture_); font_texture_ = 0; }
+    is_ready_ = false;
 }
 
 } // namespace aqua

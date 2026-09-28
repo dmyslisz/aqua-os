@@ -179,9 +179,12 @@ int DesktopShell::handle_pointer_click(float cursor_x, float cursor_y) {
 }
 
 void DesktopShell::render_top_bar(float /*elapsed_time*/) {
+    glUseProgram(shell_program_);
+    glUniform2f(u_screen_size_, static_cast<float>(screen_w_), static_cast<float>(screen_h_));
+
     // 1. Tło paska menu (pełna szerokość, wysokość 28 px)
     glUniform4f(u_rect_, 0.0f, 0.0f, static_cast<float>(screen_w_), TOP_BAR_HEIGHT);
-    glUniform4f(u_color_, 0.96f, 0.96f, 0.97f, 0.82f); // Delikatne szkło
+    glUniform4f(u_color_, 0.96f, 0.96f, 0.97f, 0.85f); // Delikatne szkło
     glUniform4f(u_border_color_, 0.0f, 0.0f, 0.0f, 0.12f);
     glUniform1f(u_radius_, 0.0f);
     glUniform1i(u_type_, 0);
@@ -205,17 +208,21 @@ void DesktopShell::render_top_bar(float /*elapsed_time*/) {
 
     if (font_) {
         // Nazwa aktywnej aplikacji: pogrubione "Terminal"
-        font_->draw_text("Terminal", 36.0f, 8.0f, 1.4f, 0x1A1A1CFF);
+        font_->draw_text("Terminal", 36.0f, 6.0f, 0x1A1A1CFF);
 
         // Pozycje menu systemowego
-        font_->draw_text("File  Edit  View  Window  Help", 126.0f, 8.0f, 1.35f, 0x3A3A3DFF);
+        font_->draw_text("File    Edit    View    Window    Help", 130.0f, 6.0f, 0x3A3A3DFF);
 
         // Prawa strona: Godzina
-        font_->draw_text(time_str, static_cast<float>(screen_w_ - 62.0f), 8.0f, 1.4f, 0x1A1A1CFF);
+        float time_w = font_->measure_text_width(time_str);
+        font_->draw_text(time_str, static_cast<float>(screen_w_) - time_w - 20.0f, 6.0f, 0x1A1A1CFF);
     }
 }
 
 void DesktopShell::render_dock(float cursor_x, float cursor_y) {
+    // Kluczowe: Przywrócenie shell_program_ po rysowaniu czcionki!
+    glUseProgram(shell_program_);
+    glUniform2f(u_screen_size_, static_cast<float>(screen_w_), static_cast<float>(screen_h_));
     // Wysokość bazowa i marginesy
     const float padding_y = 8.0f;
     const float padding_x = 10.0f;
@@ -237,11 +244,9 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
         float size = DOCK_BASE_ICON_SIZE;
         if (is_cursor_over_dock) {
             float dist_x = cursor_x - (item.base_x + item.current_size * 0.5f);
-            if (std::abs(dist_x) < 140.0f) {
+            if (std::abs(dist_x) < 120.0f) {
                 float factor = std::exp(-(dist_x * dist_x) / (2.0f * sigma * sigma));
-                // Płynne wejście w zależności od pionowej pozycji kursora
-                float y_weight = std::clamp(1.0f - (base_dock_top - cursor_y) / 25.0f, 0.0f, 1.0f);
-                size += (DOCK_MAX_ICON_SIZE - DOCK_BASE_ICON_SIZE) * factor * y_weight;
+                size += (DOCK_MAX_ICON_SIZE - DOCK_BASE_ICON_SIZE) * factor;
             }
         }
         item.current_size = size;
@@ -252,21 +257,20 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
 
     // 2. Symetryczna wysokość i szerokość kapsuły Docka
     float total_icons_w = 0.0f;
-    for (const auto& item : dock_items_) {
-        total_icons_w += item.current_size + 8.0f;
+    for (size_t i = 0; i < dock_items_.size(); ++i) {
+        total_icons_w += dock_items_[i].current_size;
+        if (i + 1 < dock_items_.size()) total_icons_w += 8.0f;
     }
-    total_icons_w -= 8.0f; // Odejmij ostatni odstęp
 
     float dock_w = total_icons_w + padding_x * 2.0f;
-    // Wysokość jest dokładnie dopasowana: najwyższa ikona + 2x równy padding
     float dock_h = max_current_icon_size + padding_y * 2.0f;
     float dock_x = (screen_w_ - dock_w) * 0.5f;
     float dock_y = screen_h_ - dock_h - bottom_margin;
 
     // 3. Rysowanie kapsuły Docka (idealnie symetryczne szkło)
     glUniform4f(u_rect_, dock_x, dock_y, dock_w, dock_h);
-    glUniform4f(u_color_, 0.94f, 0.94f, 0.96f, 0.62f);
-    glUniform4f(u_border_color_, 1.0f, 1.0f, 1.0f, 0.70f);
+    glUniform4f(u_color_, 0.94f, 0.94f, 0.96f, 0.65f);
+    glUniform4f(u_border_color_, 1.0f, 1.0f, 1.0f, 0.85f);
     glUniform1f(u_radius_, 18.0f);
     glUniform1i(u_type_, 1);
 

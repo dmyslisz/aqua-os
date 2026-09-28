@@ -18,6 +18,7 @@ pkg_check_modules(EGL REQUIRED egl)
 pkg_check_modules(GLESV2 REQUIRED glesv2)
 pkg_check_modules(INPUT REQUIRED libinput)
 pkg_check_modules(UDEV REQUIRED libudev)
+pkg_check_modules(FREETYPE REQUIRED freetype2)
 
 add_executable(aqua-server
     src/main.cpp
@@ -38,6 +39,7 @@ target_include_directories(aqua-server PRIVATE
     ${GLESV2_INCLUDE_DIRS}
     ${INPUT_INCLUDE_DIRS}
     ${UDEV_INCLUDE_DIRS}
+    ${FREETYPE_INCLUDE_DIRS}
 )
 
 target_link_libraries(aqua-server PRIVATE
@@ -47,6 +49,7 @@ target_link_libraries(aqua-server PRIVATE
     ${GLESV2_LIBRARIES}
     ${INPUT_LIBRARIES}
     ${UDEV_LIBRARIES}
+    ${FREETYPE_LIBRARIES}
 )
 
 target_compile_options(aqua-server PRIVATE
