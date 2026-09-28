@@ -16,10 +16,13 @@ pkg_check_modules(DRM REQUIRED libdrm)
 pkg_check_modules(GBM REQUIRED gbm)
 pkg_check_modules(EGL REQUIRED egl)
 pkg_check_modules(GLESV2 REQUIRED glesv2)
+pkg_check_modules(INPUT REQUIRED libinput)
 
 add_executable(aqua-server
     src/main.cpp
     src/drm_backend.cpp
+    src/input_manager.cpp
+    src/cursor_renderer.cpp
 )
 
 target_include_directories(aqua-server PRIVATE
@@ -28,6 +31,7 @@ target_include_directories(aqua-server PRIVATE
     ${GBM_INCLUDE_DIRS}
     ${EGL_INCLUDE_DIRS}
     ${GLESV2_INCLUDE_DIRS}
+    ${INPUT_INCLUDE_DIRS}
 )
 
 target_link_libraries(aqua-server PRIVATE
@@ -35,6 +39,7 @@ target_link_libraries(aqua-server PRIVATE
     ${GBM_LIBRARIES}
     ${EGL_LIBRARIES}
     ${GLESV2_LIBRARIES}
+    ${INPUT_LIBRARIES}
 )
 
 target_compile_options(aqua-server PRIVATE
