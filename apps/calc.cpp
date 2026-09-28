@@ -36,8 +36,8 @@ public:
     }
 
     void on_draw(aqua::Canvas& canvas) override {
-        // 1. Tło okna (macOS Dark Slate)
-        canvas.clear(aqua::Color::MacDarkBg);
+        // 1. Tło okna (macOS Dark Glass z delikatną przezroczystością)
+        canvas.clear(aqua::Color::rgba(28, 28, 32, 238));
 
         // Subtelna linia pod obszarem wyświetlacza
         canvas.fill_rect(10, 115, width() - 20, 1, aqua::Color::hex(0x3A3A3C));

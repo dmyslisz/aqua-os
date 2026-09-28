@@ -172,11 +172,19 @@ int Application::run(int target_fps) {
 
     running_ = true;
     auto frame_duration = std::chrono::milliseconds(1000 / std::max(1, target_fps));
+    auto last_time = std::chrono::steady_clock::now();
 
     while (running_) {
-        auto frame_start = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        float dt = std::chrono::duration<float>(now - last_time).count();
+        last_time = now;
 
         dispatch_server_events();
+
+        // Aktualizacja logiki i animacji okien
+        for (auto& win : windows_) {
+            win->on_update(dt);
+        }
 
         // Usun zamkniete okna
         windows_.erase(
@@ -197,9 +205,9 @@ int Application::run(int target_fps) {
             }
         }
 
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - frame_start);
-        if (elapsed < frame_duration) {
-            int wait_ms = static_cast<int>((frame_duration - elapsed).count());
+        auto frame_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - now);
+        if (frame_elapsed < frame_duration) {
+            int wait_ms = static_cast<int>((frame_duration - frame_elapsed).count());
             struct pollfd pfd{sock_, POLLIN, 0};
             ::poll(&pfd, 1, wait_ms);
         }

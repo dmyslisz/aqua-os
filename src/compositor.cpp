@@ -91,10 +91,12 @@ bool WindowCompositor::initialize(uint32_t screen_width, uint32_t screen_height)
             // 1. Tło korpusu okna lub treść aplikacji (z dma-buf)
             vec3 bg_color = vec3(0.96, 0.96, 0.97);
 
+            float client_alpha = 1.0;
             if (u_has_client_tex == 1) {
                 vec2 uv = vec2(local_x / u_win_box.z, local_y / u_win_box.w);
                 vec4 tex_col = texture(u_client_tex, uv);
                 bg_color = tex_col.rgb;
+                client_alpha = tex_col.a;
             } else {
                 // Domyślny pasek tytułowy gdy brak klienta
                 if (local_y < 38.0) {
@@ -169,9 +171,10 @@ bool WindowCompositor::initialize(uint32_t screen_width, uint32_t screen_height)
                 final_color = mix(final_color, vec3(0.0, 0.0, 0.0), 0.18);
             }
 
-            // Antialiasing krawędzi okna
+            // Antialiasing krawędzi okna oraz wsparcie dla przezroczystości treści okna
             float edge_alpha = clamp(-d, 0.0, 1.0);
-            FragColor = vec4(final_color, edge_alpha);
+            float win_alpha = is_button ? 1.0 : client_alpha;
+            FragColor = vec4(final_color, edge_alpha * win_alpha);
         }
     )";
 

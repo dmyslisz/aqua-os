@@ -23,6 +23,7 @@ public:
     bool needs_redraw() const { return needs_redraw_; }
 
     virtual void on_create() {}
+    virtual void on_update(float dt) { (void)dt; }
     virtual void on_draw(Canvas& canvas) = 0;
     virtual void on_resize(uint32_t new_width, uint32_t new_height) { (void)new_width; (void)new_height; }
     virtual void on_mouse_move(float x, float y) { (void)x; (void)y; }
