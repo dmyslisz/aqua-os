@@ -52,9 +52,6 @@ private:
     GLint u_screen_size_{-1};
     GLint u_rect_{-1};
     GLint u_radius_{-1};
-    GLint u_color_{-1};
-    GLint u_shadow_{-1};
-    GLint u_traffic_lights_{-1};
     GLint u_cursor_pos_{-1};
 };
 

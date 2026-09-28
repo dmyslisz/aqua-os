@@ -51,6 +51,9 @@ public:
     // Hit-testing dla strefy przeciągania (Draggable Titlebar Region)
     bool is_in_draggable_region(float cursor_x, float cursor_y) const;
 
+    // Czy punkt mieści się w całym oknie
+    bool contains(float cursor_x, float cursor_y) const;
+
     // Obsługa zewnętrznej tekstury z dma-buf
     uint32_t texture_id() const { return texture_id_; }
     void set_texture(uint32_t tex_id) { texture_id_ = tex_id; }

@@ -1,6 +1,7 @@
 #include "ipc_server.hpp"
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <iostream>
