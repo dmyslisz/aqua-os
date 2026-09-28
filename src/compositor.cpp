@@ -334,6 +334,9 @@ void WindowCompositor::handle_pointer_button(uint32_t button, bool pressed, floa
                 auto tl = win->hit_test_traffic_lights(cursor_x, cursor_y);
                 if (tl == TrafficLightButton::Close) {
                     std::cout << "[Aqua] Kliknieto zamkniecie okna ID: " << win->id() << std::endl;
+                    if (close_cb_) {
+                        close_cb_(win->id());
+                    }
                     remove_window(win->id());
                     return;
                 } else if (tl == TrafficLightButton::Minimize) {

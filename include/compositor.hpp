@@ -26,9 +26,11 @@ public:
 
     using WindowResizeCallback = std::function<void(uint32_t window_id, uint32_t width, uint32_t height)>;
     using WindowInputCallback = std::function<void(uint32_t window_id, MessageType type, const MsgInputEvent& event)>;
+    using WindowCloseCallback = std::function<void(uint32_t window_id)>;
 
     void set_resize_callback(WindowResizeCallback cb) { resize_cb_ = std::move(cb); }
     void set_input_callback(WindowInputCallback cb) { input_cb_ = std::move(cb); }
+    void set_close_callback(WindowCloseCallback cb) { close_cb_ = std::move(cb); }
     uint32_t focused_window_id() const;
 
     // Renderowanie wszystkich okien, cieni i kontrolek
@@ -78,6 +80,7 @@ private:
 
     WindowResizeCallback resize_cb_;
     WindowInputCallback input_cb_;
+    WindowCloseCallback close_cb_;
 };
 
 } // namespace aqua

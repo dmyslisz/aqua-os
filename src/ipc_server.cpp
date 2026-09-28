@@ -431,4 +431,14 @@ void IpcServer::send_input_event(uint32_t window_id, MessageType type, const Msg
     }
 }
 
+void IpcServer::send_window_closed(uint32_t window_id) {
+    for (const auto& client : clients_) {
+        if (client.window_id == window_id && client.fd >= 0) {
+            MsgHeader hdr{MessageType::WindowClosed, 0, client.client_id, window_id};
+            ::send(client.fd, &hdr, sizeof(hdr), MSG_DONTWAIT);
+            break;
+        }
+    }
+}
+
 } // namespace aqua

@@ -189,6 +189,11 @@ int main() {
         ipc.send_input_event(win_id, type, ev);
     });
 
+    // Przekazywanie powiadomienia o zamknięciu okna przez Traffic Lights
+    compositor.set_close_callback([&ipc](uint32_t win_id) {
+        ipc.send_window_closed(win_id);
+    });
+
     // Przekazywanie zdarzeń klawiatury do aktywnego okna
     input.set_key_callback([&compositor, &ipc](const aqua::KeyEvent& e) {
         if (e.is_press) {

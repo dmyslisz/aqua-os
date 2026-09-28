@@ -62,7 +62,24 @@ target_compile_options(aqua-server PRIVATE
     -O2
 )
 
-# Niezależna aplikacja kliencka komunikująca się przez dma-buf IPC
+# Biblioteka kliencka libaqua (C++20 UI Toolkit dla aplikacji Aqua OS)
+add_library(aqua-client STATIC
+    src/client/canvas.cpp
+    src/client/window.cpp
+    src/client/application.cpp
+)
+
+target_include_directories(aqua-client PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_compile_options(aqua-client PRIVATE
+    -Wall
+    -Wextra
+    -O2
+)
+
+# Niezależna aplikacja demonstracyjna komunikująca się przez dma-buf / SHM IPC
 add_executable(aqua-demo-client
     apps/demo_client.cpp
 )
@@ -83,3 +100,34 @@ target_compile_options(aqua-demo-client PRIVATE
     -Wextra
     -O2
 )
+
+# Natywna aplikacja: Kalkulator macOS (aqua-calc)
+add_executable(aqua-calc
+    apps/calc.cpp
+)
+
+target_link_libraries(aqua-calc PRIVATE
+    aqua-client
+)
+
+target_compile_options(aqua-calc PRIVATE
+    -Wall
+    -Wextra
+    -O2
+)
+
+# Natywna aplikacja: Monitor systemu i specyfikacji sprzętowej (aqua-sysmon)
+add_executable(aqua-sysmon
+    apps/sysmon.cpp
+)
+
+target_link_libraries(aqua-sysmon PRIVATE
+    aqua-client
+)
+
+target_compile_options(aqua-sysmon PRIVATE
+    -Wall
+    -Wextra
+    -O2
+)
+
