@@ -290,24 +290,31 @@ bool IpcServer::handle_client_message(ClientConnection& client) {
             }
             auto* req = reinterpret_cast<MsgAttachShm*>(payload.data());
 
-            // Zwolnienie poprzednich zasobów
+            // Zwolnienie poprzednich zasobów SHM
             if (client.shm_data && client.shm_size > 0) {
                 ::munmap(client.shm_data, client.shm_size);
                 client.shm_data = nullptr;
+                client.shm_size = 0;
             }
             if (client.shm_fd >= 0) {
                 ::close(client.shm_fd);
+                client.shm_fd = -1;
             }
-            if (client.texture_id) {
-                glDeleteTextures(1, &client.texture_id);
-                client.texture_id = 0;
+
+            // Pobierz rzeczywisty rozmiar pliku przez fstat
+            struct stat st{};
+            size_t file_size = 0;
+            if (::fstat(passed_fd, &st) == 0 && st.st_size > 0) {
+                file_size = static_cast<size_t>(st.st_size);
+            } else {
+                file_size = static_cast<size_t>(req->stride) * req->height;
             }
 
             client.shm_fd = passed_fd;
             client.shm_w = req->width;
             client.shm_h = req->height;
             client.shm_stride = req->stride;
-            client.shm_size = static_cast<size_t>(req->stride) * req->height;
+            client.shm_size = file_size;
 
             client.shm_data = ::mmap(nullptr, client.shm_size, PROT_READ, MAP_SHARED, passed_fd, 0);
             if (client.shm_data == MAP_FAILED) {
@@ -315,13 +322,15 @@ bool IpcServer::handle_client_message(ClientConnection& client) {
                 ::close(passed_fd);
                 client.shm_fd = -1;
                 client.shm_data = nullptr;
+                client.shm_size = 0;
                 break;
             }
 
-            // Utworzenie tekstury OpenGL dla bufora SHM
-            GLuint tex = 0;
-            glGenTextures(1, &tex);
-            glBindTexture(GL_TEXTURE_2D, tex);
+            // Utwórz lub zaktualizuj teksturę OpenGL
+            if (!client.texture_id) {
+                glGenTextures(1, &client.texture_id);
+            }
+            glBindTexture(GL_TEXTURE_2D, client.texture_id);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -329,21 +338,23 @@ bool IpcServer::handle_client_message(ClientConnection& client) {
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, req->width, req->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, client.shm_data);
             glBindTexture(GL_TEXTURE_2D, 0);
 
-            client.texture_id = tex;
             client.is_shm = true;
             if (client.window) {
-                client.window->set_texture(tex);
+                client.window->set_texture(client.texture_id);
             }
             std::cout << "[Aqua IPC] Pomyślnie zaimportowano bufor SHM " << req->width << "x" << req->height 
-                      << " do tekstury GL ID: " << tex << " dla okna ID: " << client.window_id << std::endl;
+                      << " (pula " << client.shm_size << " B) dla okna ID: " << client.window_id << std::endl;
             break;
         }
 
         case MessageType::CommitBuffer: {
             if (client.is_shm && client.shm_data && client.texture_id) {
-                glBindTexture(GL_TEXTURE_2D, client.texture_id);
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, client.shm_w, client.shm_h, GL_RGBA, GL_UNSIGNED_BYTE, client.shm_data);
-                glBindTexture(GL_TEXTURE_2D, 0);
+                size_t needed_bytes = static_cast<size_t>(client.shm_stride) * client.shm_h;
+                if (needed_bytes <= client.shm_size) {
+                    glBindTexture(GL_TEXTURE_2D, client.texture_id);
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, client.shm_w, client.shm_h, GL_RGBA, GL_UNSIGNED_BYTE, client.shm_data);
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                }
             }
             break;
         }

@@ -205,7 +205,7 @@ int main(int argc, char* argv[]) {
     } else {
         // --- TRYB SHARED MEMORY (POSIX SHM) ---
         uint32_t stride = win_w * 4;
-        size_t buf_size = static_cast<size_t>(stride) * win_h;
+        const size_t max_buf_size = 2560 * 1600 * 4; // Bezpieczna pula 16 MB
 
         int shm_fd = -1;
         std::string shm_name = "/aqua_demo_shm_" + std::to_string(::getpid());
@@ -224,14 +224,14 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        if (::ftruncate(shm_fd, buf_size) < 0) {
+        if (::ftruncate(shm_fd, max_buf_size) < 0) {
             std::cerr << "ftruncate zakonczone niepowodzeniem!" << std::endl;
             ::close(shm_fd);
             ::close(sock);
             return 1;
         }
 
-        uint8_t* pixels = static_cast<uint8_t*>(::mmap(nullptr, buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0));
+        uint8_t* pixels = static_cast<uint8_t*>(::mmap(nullptr, max_buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0));
         if (pixels == MAP_FAILED) {
             std::cerr << "mmap bufora SHM zakonczone niepowodzeniem!" << std::endl;
             ::close(shm_fd);
@@ -240,14 +240,14 @@ int main(int argc, char* argv[]) {
         }
 
         std::cout << "[Klient SHM] Utworzono bufor wspoldzielony " << win_w << "x" << win_h 
-                  << " (" << buf_size << " bajtow), fd: " << shm_fd << std::endl;
+                  << " (pula " << max_buf_size << " bajtow), fd: " << shm_fd << std::endl;
 
         aqua::MsgAttachShm attach_req{win_w, win_h, stride, 0};
         aqua::MsgHeader attach_hdr{aqua::MessageType::AttachShm, sizeof(attach_req), 0, resp.window_id};
 
         if (send_fd_with_payload(sock, shm_fd, attach_hdr, attach_req) < 0) {
             std::cerr << "Blad wysylania shm_fd przez SCM_RIGHTS: " << std::strerror(errno) << std::endl;
-            ::munmap(pixels, buf_size);
+            ::munmap(pixels, max_buf_size);
             ::close(shm_fd);
             ::close(sock);
             return 1;
@@ -277,20 +277,13 @@ int main(int argc, char* argv[]) {
                     aqua::MsgWindowResized res{};
                     ::recv(sock, &res, sizeof(res), 0);
                     if (res.width > 0 && res.height > 0 && (res.width != win_w || res.height != win_h)) {
-                        std::cout << "[Klient SHM] Zmiana geometrii okna: " << res.width << "x" << res.height << std::endl;
-                        ::munmap(pixels, buf_size);
-
-                        win_w = res.width;
-                        win_h = res.height;
+                        win_w = std::min(2560u, res.width);
+                        win_h = std::min(1600u, res.height);
                         stride = win_w * 4;
-                        buf_size = static_cast<size_t>(stride) * win_h;
-
-                        if (::ftruncate(shm_fd, buf_size) == 0) {
-                            pixels = static_cast<uint8_t*>(::mmap(nullptr, buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0));
-                            aqua::MsgAttachShm attach_req{win_w, win_h, stride, 0};
-                            aqua::MsgHeader attach_hdr{aqua::MessageType::AttachShm, sizeof(attach_req), 0, resp.window_id};
-                            send_fd_with_payload(sock, shm_fd, attach_hdr, attach_req);
-                        }
+                        std::cout << "[Klient SHM] Zmiana geometrii okna: " << win_w << "x" << win_h << std::endl;
+                        aqua::MsgAttachShm resize_attach{win_w, win_h, stride, 0};
+                        aqua::MsgHeader resize_hdr{aqua::MessageType::AttachShm, sizeof(resize_attach), 0, resp.window_id};
+                        send_fd_with_payload(sock, shm_fd, resize_hdr, resize_attach);
                     }
                 } else if (in_hdr.type == aqua::MessageType::PointerMotion) {
                     aqua::MsgInputEvent ev{};
@@ -364,7 +357,7 @@ int main(int argc, char* argv[]) {
             std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS
         }
 
-        ::munmap(pixels, buf_size);
+        ::munmap(pixels, max_buf_size);
         ::close(shm_fd);
     }
 

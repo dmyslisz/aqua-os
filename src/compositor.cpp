@@ -305,10 +305,6 @@ void WindowCompositor::handle_pointer_move(float cursor_x, float cursor_y) {
 
         resizing_window_->set_position(new_x, new_y);
         resizing_window_->set_size(new_w, new_h);
-
-        if (resize_cb_) {
-            resize_cb_(resizing_window_->id(), static_cast<uint32_t>(new_w), static_cast<uint32_t>(new_h));
-        }
     } else {
         // Przekaż ruch kursora do okna znajdującego się pod wskaźnikiem
         for (auto it = windows_.rbegin(); it != windows_.rend(); ++it) {
