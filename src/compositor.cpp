@@ -108,19 +108,20 @@ bool WindowCompositor::initialize(uint32_t screen_width, uint32_t screen_height)
             vec3 btn_color = bg_color;
             bool is_button = false;
 
-            // Sprawdź czy kursor jest w rejonie Traffic Lights (Hover state)
-            bool hover_traffic = (u_cursor_pos.x >= u_rect.x && u_cursor_pos.x <= (u_rect.x + 80.0) &&
-                                  u_cursor_pos.y >= u_rect.y && u_cursor_pos.y <= (u_rect.y + 38.0));
+            // Pozycja kursora względem lewego górnego rogu okna
+            float cur_local_x = u_cursor_pos.x - (u_rect.x + u_win_box.x);
+            float cur_local_y = u_cursor_pos.y - (u_rect.y + u_win_box.y);
 
             // Czerwony (Zamknij) - środek: (18, 19)
             float d_red = length(vec2(local_x - 18.0, local_y - btn_cy)) - r_btn;
+            bool hover_red = length(vec2(cur_local_x - 18.0, cur_local_y - btn_cy)) <= (r_btn + 1.0);
             if (d_red < 0.0) {
                 btn_color = vec3(1.0, 0.37, 0.34); // #FF5F56
                 is_button = true;
-                // Symbol 'X' po najechaniu myszą
-                if (hover_traffic) {
+                // Symbol 'X' pojawia się TYLKO gdy kursor jest bezpośrednio nad czerwonym przyciskiem
+                if (hover_red) {
                     vec2 dxy = abs(vec2(local_x - 18.0, local_y - btn_cy));
-                    if (abs(dxy.x - dxy.y) < 0.7 && dxy.x < 3.2) {
+                    if (abs(dxy.x - dxy.y) < 0.75 && dxy.x < 3.2) {
                         btn_color = vec3(0.35, 0.0, 0.0);
                     }
                 }
@@ -128,27 +129,29 @@ bool WindowCompositor::initialize(uint32_t screen_width, uint32_t screen_height)
 
             // Żółty (Minimalizuj) - środek: (38, 19)
             float d_yellow = length(vec2(local_x - 38.0, local_y - btn_cy)) - r_btn;
+            bool hover_yellow = length(vec2(cur_local_x - 38.0, cur_local_y - btn_cy)) <= (r_btn + 1.0);
             if (d_yellow < 0.0) {
                 btn_color = vec3(1.0, 0.74, 0.18); // #FFBD2E
                 is_button = true;
-                // Symbol '-' po najechaniu myszą
-                if (hover_traffic) {
-                    if (abs(local_y - btn_cy) < 0.8 && abs(local_x - 38.0) < 3.5) {
-                        btn_color = vec3(0.4, 0.25, 0.0);
+                // Symbol '-' pojawia się TYLKO gdy kursor jest nad żółtym przyciskiem
+                if (hover_yellow) {
+                    if (abs(local_y - btn_cy) < 0.85 && abs(local_x - 38.0) < 3.5) {
+                        btn_color = vec3(0.42, 0.22, 0.0);
                     }
                 }
             }
 
             // Zielony (Maksymalizuj) - środek: (58, 19)
             float d_green = length(vec2(local_x - 58.0, local_y - btn_cy)) - r_btn;
+            bool hover_green = length(vec2(cur_local_x - 58.0, cur_local_y - btn_cy)) <= (r_btn + 1.0);
             if (d_green < 0.0) {
                 btn_color = vec3(0.15, 0.79, 0.25); // #27C93F
                 is_button = true;
-                // Symbol strzałek po najechaniu myszą
-                if (hover_traffic) {
+                // Symbol '+' pojawia się TYLKO gdy kursor jest nad zielonym przyciskiem
+                if (hover_green) {
                     float gx = local_x - 58.0;
                     float gy = local_y - btn_cy;
-                    if (abs(gx + gy) < 0.8 && length(vec2(gx, gy)) < 3.5) {
+                    if ((abs(gx) < 0.75 && abs(gy) < 3.2) || (abs(gy) < 0.75 && abs(gx) < 3.2)) {
                         btn_color = vec3(0.0, 0.35, 0.05);
                     }
                 }
