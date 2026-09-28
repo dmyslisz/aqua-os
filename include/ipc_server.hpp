@@ -18,6 +18,15 @@ struct ClientConnection {
     std::shared_ptr<Window> window{nullptr};
     GLuint texture_id{0};
     EGLImageKHR egl_image{EGL_NO_IMAGE_KHR};
+
+    // Obsługa pamięci współdzielonej (SHM):
+    int shm_fd{-1};
+    void* shm_data{nullptr};
+    size_t shm_size{0};
+    uint32_t shm_w{0};
+    uint32_t shm_h{0};
+    uint32_t shm_stride{0};
+    bool is_shm{false};
 };
 
 class IpcServer {
@@ -30,10 +39,12 @@ public:
     void shutdown();
 
     int server_fd() const { return server_fd_; }
+    const std::vector<ClientConnection>& clients() const { return clients_; }
 
 private:
     void handle_new_connection();
-    void handle_client_message(ClientConnection& client);
+    bool handle_client_message(ClientConnection& client);
+    void cleanup_client(ClientConnection& client);
     GLuint import_dmabuf_to_texture(int dmabuf_fd, uint32_t width, uint32_t height, uint32_t stride, uint32_t fourcc, EGLImageKHR& out_img);
 
     int server_fd_{-1};

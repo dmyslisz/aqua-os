@@ -188,6 +188,10 @@ bool WindowCompositor::initialize(uint32_t screen_width, uint32_t screen_height)
     u_rect_ = glGetUniformLocation(program_, "u_rect");
     u_radius_ = glGetUniformLocation(program_, "u_radius");
     u_cursor_pos_ = glGetUniformLocation(program_, "u_cursor_pos");
+    u_win_box_ = glGetUniformLocation(program_, "u_win_box");
+    u_pass_ = glGetUniformLocation(program_, "u_pass");
+    u_client_tex_ = glGetUniformLocation(program_, "u_client_tex");
+    u_has_client_tex_ = glGetUniformLocation(program_, "u_has_client_tex");
 
     float quad_vertices[] = {
         0.0f, 0.0f,
@@ -312,7 +316,7 @@ void WindowCompositor::handle_pointer_button(uint32_t button, bool pressed, floa
         if (pressed) {
             // Szukamy okna od góry (najwyższy Z-order)
             for (auto it = windows_.rbegin(); it != windows_.rend(); ++it) {
-                auto& win = *it;
+                auto win = *it;
 
                 // 1. Sprawdź kliknięcie w Traffic Lights
                 auto tl = win->hit_test_traffic_lights(cursor_x, cursor_y);
@@ -339,6 +343,10 @@ void WindowCompositor::handle_pointer_button(uint32_t button, bool pressed, floa
                     resize_orig_y_ = win->y();
                     resize_orig_w_ = win->width();
                     resize_orig_h_ = win->height();
+
+                    // Przenieś kliknięte okno na sam wierzch
+                    windows_.erase(std::next(it).base());
+                    windows_.push_back(win);
                     return;
                 }
 
@@ -347,6 +355,17 @@ void WindowCompositor::handle_pointer_button(uint32_t button, bool pressed, floa
                     dragging_window_ = win;
                     drag_offset_x_ = cursor_x - win->x();
                     drag_offset_y_ = cursor_y - win->y();
+
+                    // Przenieś kliknięte okno na sam wierzch
+                    windows_.erase(std::next(it).base());
+                    windows_.push_back(win);
+                    return;
+                }
+
+                // 4. Jeśli kliknięto wewnątrz okna, przenieś na wierzch (Focus / Bring to front)
+                if (win->contains(cursor_x, cursor_y)) {
+                    windows_.erase(std::next(it).base());
+                    windows_.push_back(win);
                     return;
                 }
             }
@@ -371,32 +390,30 @@ void WindowCompositor::render_window(const Window& win, float cursor_x, float cu
     glUniform4f(u_rect_, quad_x, quad_y, quad_w, quad_h);
     glUniform1f(u_radius_, Window::CORNER_RADIUS);
     glUniform2f(u_cursor_pos_, cursor_x, cursor_y);
-
-    GLint u_win_box = glGetUniformLocation(program_, "u_win_box");
-    glUniform4f(u_win_box, shadow_margin, shadow_margin, win.width(), win.height());
-
-    GLint u_pass = glGetUniformLocation(program_, "u_pass");
-    GLint u_has_client_tex = glGetUniformLocation(program_, "u_has_client_tex");
-    GLint u_client_tex = glGetUniformLocation(program_, "u_client_tex");
+    glUniform4f(u_win_box_, shadow_margin, shadow_margin, win.width(), win.height());
 
     glBindVertexArray(vao_);
 
     // PRZEBIEG 1: RENDEROWANIE MIĘKKIEGO CIENIA
-    glUniform1i(u_pass, 0);
+    glUniform1i(u_pass_, 0);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     // PRZEBIEG 2: RENDEROWANIE KORPUSU OKNA (LUB TREŚCI KLIENTA) I TRAFFIC LIGHTS
-    glUniform1i(u_pass, 1);
+    glUniform1i(u_pass_, 1);
     if (win.has_texture()) {
-        glUniform1i(u_has_client_tex, 1);
-        glActiveTexture(GL_TEXTURE1);
+        glUniform1i(u_has_client_tex_, 1);
+        glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, win.texture_id());
-        glUniform1i(u_client_tex, 1);
+        glUniform1i(u_client_tex_, 0);
     } else {
-        glUniform1i(u_has_client_tex, 0);
+        glUniform1i(u_has_client_tex_, 0);
     }
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    if (win.has_texture()) {
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 }
 
 void WindowCompositor::render() {

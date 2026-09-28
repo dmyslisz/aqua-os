@@ -187,15 +187,8 @@ int main() {
         std::cerr << "[OSTRZEŻENIE] Inicjalizacja serwera IPC nie powiodla sie." << std::endl;
     }
 
-    struct pollfd fds[3];
-    fds[0].fd = backend.drm_fd();
-    fds[0].events = POLLIN;
-
-    fds[1].fd = input.fd();
-    fds[1].events = POLLIN;
-
-    fds[2].fd = ipc.server_fd();
-    fds[2].events = POLLIN;
+    std::vector<struct pollfd> fds;
+    fds.reserve(16);
 
     bool needs_redraw = true;
 
@@ -240,25 +233,50 @@ int main() {
             }
         }
 
-        // Czekaj na zdarzenie (VSync, mysz/klawiatura LUB komunikat klienta IPC)
+        // Przygotuj deskryptory dla poll():
+        // [0] = DRM KMS (VSync)
+        // [1] = Libinput
+        // [2] = IPC Server (nowe połączenia)
+        // [3..N] = Wszyscy podłączeni klienci IPC (dma-buf, SHM, klatki)
+        fds.clear();
+        fds.push_back({backend.drm_fd(), POLLIN, 0});
+        fds.push_back({input.fd(), POLLIN, 0});
+        fds.push_back({ipc.server_fd(), POLLIN, 0});
+        for (const auto& c : ipc.clients()) {
+            if (c.fd >= 0) {
+                fds.push_back({c.fd, POLLIN, 0});
+            }
+        }
+
         int timeout_ms = backend.waiting_for_flip() ? 20 : 16;
-        int ret = poll(fds, 3, timeout_ms);
+        int ret = poll(fds.data(), static_cast<nfds_t>(fds.size()), timeout_ms);
         if (ret < 0 && errno == EINTR) continue;
 
         // Obsługa przerwania VSync z DRM
-        if (fds[0].revents & POLLIN) {
+        if (fds.size() > 0 && (fds[0].revents & POLLIN)) {
             backend.process_drm_events();
             needs_redraw = true;
         }
 
         // Obsługa wejścia z touchpada/myszy/klawiatury
-        if (fds[1].revents & POLLIN) {
+        if (fds.size() > 1 && (fds[1].revents & POLLIN)) {
             input.dispatch_events();
             needs_redraw = true;
         }
 
-        // Obsługa komunikatów i klatek z aplikacji klienckich przez IPC
-        if (fds[2].revents & POLLIN) {
+        // Obsługa komunikatów i klatek z IPC (nowi klienci oraz przesyłane bufory)
+        bool ipc_activity = false;
+        if (fds.size() > 2 && (fds[2].revents & POLLIN)) {
+            ipc_activity = true;
+        }
+        for (size_t i = 3; i < fds.size(); ++i) {
+            if (fds[i].revents & (POLLIN | POLLHUP | POLLERR)) {
+                ipc_activity = true;
+                break;
+            }
+        }
+
+        if (ipc_activity) {
             ipc.dispatch_events();
             needs_redraw = true;
         }

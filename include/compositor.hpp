@@ -62,6 +62,10 @@ private:
     GLint u_rect_{-1};
     GLint u_radius_{-1};
     GLint u_cursor_pos_{-1};
+    GLint u_win_box_{-1};
+    GLint u_pass_{-1};
+    GLint u_client_tex_{-1};
+    GLint u_has_client_tex_{-1};
 };
 
 } // namespace aqua

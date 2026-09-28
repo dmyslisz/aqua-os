@@ -14,6 +14,7 @@ enum class MessageType : uint32_t {
     CommitBuffer = 4,
     SetTitle = 5,
     SetDraggableRegions = 6,
+    AttachShm = 7,
 
     // Serwer -> Klient
     WindowCreated = 100,
@@ -47,6 +48,14 @@ struct MsgAttachDmaBuf {
     uint32_t height;
     uint32_t stride;
     uint32_t drm_fourcc;
+};
+
+// Payload dla AttachShm (deskryptor fd pamięci współdzielonej przekazywany przez SCM_RIGHTS)
+struct MsgAttachShm {
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride;
+    uint32_t format; // 0 = RGBA8888, 1 = BGRA8888
 };
 
 // Payload dla SetDraggableRegions

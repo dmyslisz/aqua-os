@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <iostream>
@@ -78,6 +79,36 @@ void IpcServer::handle_new_connection() {
     clients_.push_back(std::move(client));
 }
 
+void IpcServer::cleanup_client(ClientConnection& client) {
+    if (client.shm_data && client.shm_size > 0) {
+        ::munmap(client.shm_data, client.shm_size);
+        client.shm_data = nullptr;
+        client.shm_size = 0;
+    }
+    if (client.shm_fd >= 0) {
+        ::close(client.shm_fd);
+        client.shm_fd = -1;
+    }
+    if (client.texture_id) {
+        glDeleteTextures(1, &client.texture_id);
+        client.texture_id = 0;
+    }
+    if (client.egl_image != EGL_NO_IMAGE_KHR) {
+        PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR =
+            reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
+        if (eglDestroyImageKHR) eglDestroyImageKHR(egl_dpy_, client.egl_image);
+        client.egl_image = EGL_NO_IMAGE_KHR;
+    }
+    if (client.window && compositor_) {
+        compositor_->remove_window(client.window->id());
+        client.window = nullptr;
+    }
+    if (client.fd >= 0) {
+        ::close(client.fd);
+        client.fd = -1;
+    }
+}
+
 GLuint IpcServer::import_dmabuf_to_texture(int dmabuf_fd, uint32_t width, uint32_t height, uint32_t stride, uint32_t fourcc, EGLImageKHR& out_img) {
     PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR =
         reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
@@ -124,15 +155,17 @@ GLuint IpcServer::import_dmabuf_to_texture(int dmabuf_fd, uint32_t width, uint32
     return tex;
 }
 
-void IpcServer::handle_client_message(ClientConnection& client) {
+bool IpcServer::handle_client_message(ClientConnection& client) {
+    if (client.fd < 0) return false;
+
     MsgHeader hdr{};
     struct msghdr msg{};
-    struct iovec iov[2];
+    struct iovec iov[1];
 
     iov[0].iov_base = &hdr;
     iov[0].iov_len = sizeof(hdr);
 
-    // Bufor pomocniczy dla SCM_RIGHTS (deskryptory plików dma-buf)
+    // Bufor pomocniczy dla SCM_RIGHTS (deskryptory plików dma-buf / SHM)
     union {
         struct cmsghdr cm;
         char control[CMSG_SPACE(sizeof(int))];
@@ -145,27 +178,50 @@ void IpcServer::handle_client_message(ClientConnection& client) {
 
     ssize_t n = ::recvmsg(client.fd, &msg, 0);
     if (n <= 0) {
-        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return;
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return false;
         // Klient rozłączony
         std::cout << "[Aqua IPC] Klient ID " << client.client_id << " rozlaczyl sie." << std::endl;
-        if (client.window && compositor_) {
-            compositor_->remove_window(client.window->id());
+        cleanup_client(client);
+        return false;
+    }
+
+    if (n < static_cast<ssize_t>(sizeof(hdr))) {
+        size_t read_bytes = n;
+        char* hdr_ptr = reinterpret_cast<char*>(&hdr);
+        while (read_bytes < sizeof(hdr)) {
+            ssize_t r = ::recv(client.fd, hdr_ptr + read_bytes, sizeof(hdr) - read_bytes, 0);
+            if (r <= 0) {
+                if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    usleep(50);
+                    continue;
+                }
+                break;
+            }
+            read_bytes += r;
         }
-        ::close(client.fd);
-        client.fd = -1;
-        return;
     }
 
     // Odczyt payloadu
     std::vector<char> payload(hdr.size);
     if (hdr.size > 0) {
-        ::recv(client.fd, payload.data(), hdr.size, 0);
+        size_t total_read = 0;
+        while (total_read < hdr.size) {
+            ssize_t r = ::recv(client.fd, payload.data() + total_read, hdr.size - total_read, 0);
+            if (r <= 0) {
+                if (r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    usleep(100);
+                    continue;
+                }
+                break;
+            }
+            total_read += r;
+        }
     }
 
-    // Wyciągnięcie przekazanego deskryptora dma-buf
+    // Wyciągnięcie przekazanego deskryptora dma-buf / SHM
     int passed_fd = -1;
     struct cmsghdr* cmptr = CMSG_FIRSTHDR(&msg);
-    if (cmptr && cmptr->cmsg_len == CMSG_LEN(sizeof(int)) &&
+    if (cmptr && cmptr->cmsg_len >= CMSG_LEN(sizeof(int)) &&
         cmptr->cmsg_level == SOL_SOCKET && cmptr->cmsg_type == SCM_RIGHTS) {
         passed_fd = *reinterpret_cast<int*>(CMSG_DATA(cmptr));
     }
@@ -220,7 +276,74 @@ void IpcServer::handle_client_message(ClientConnection& client) {
             GLuint tex = import_dmabuf_to_texture(passed_fd, req->width, req->height, req->stride, req->drm_fourcc, client.egl_image);
             if (tex && client.window) {
                 client.texture_id = tex;
+                client.is_shm = false;
                 client.window->set_texture(tex);
+                std::cout << "[Aqua IPC] Podpieto bufor dma-buf do okna ID: " << client.window_id << std::endl;
+            }
+            break;
+        }
+
+        case MessageType::AttachShm: {
+            if (payload.size() < sizeof(MsgAttachShm) || passed_fd < 0) {
+                if (passed_fd >= 0) ::close(passed_fd);
+                break;
+            }
+            auto* req = reinterpret_cast<MsgAttachShm*>(payload.data());
+
+            // Zwolnienie poprzednich zasobów
+            if (client.shm_data && client.shm_size > 0) {
+                ::munmap(client.shm_data, client.shm_size);
+                client.shm_data = nullptr;
+            }
+            if (client.shm_fd >= 0) {
+                ::close(client.shm_fd);
+            }
+            if (client.texture_id) {
+                glDeleteTextures(1, &client.texture_id);
+                client.texture_id = 0;
+            }
+
+            client.shm_fd = passed_fd;
+            client.shm_w = req->width;
+            client.shm_h = req->height;
+            client.shm_stride = req->stride;
+            client.shm_size = static_cast<size_t>(req->stride) * req->height;
+
+            client.shm_data = ::mmap(nullptr, client.shm_size, PROT_READ, MAP_SHARED, passed_fd, 0);
+            if (client.shm_data == MAP_FAILED) {
+                std::cerr << "[Aqua IPC BŁĄD] Nie mozna zmapowac bufora SHM: " << std::strerror(errno) << std::endl;
+                ::close(passed_fd);
+                client.shm_fd = -1;
+                client.shm_data = nullptr;
+                break;
+            }
+
+            // Utworzenie tekstury OpenGL dla bufora SHM
+            GLuint tex = 0;
+            glGenTextures(1, &tex);
+            glBindTexture(GL_TEXTURE_2D, tex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, req->width, req->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, client.shm_data);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            client.texture_id = tex;
+            client.is_shm = true;
+            if (client.window) {
+                client.window->set_texture(tex);
+            }
+            std::cout << "[Aqua IPC] Pomyślnie zaimportowano bufor SHM " << req->width << "x" << req->height 
+                      << " do tekstury GL ID: " << tex << " dla okna ID: " << client.window_id << std::endl;
+            break;
+        }
+
+        case MessageType::CommitBuffer: {
+            if (client.is_shm && client.shm_data && client.texture_id) {
+                glBindTexture(GL_TEXTURE_2D, client.texture_id);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, client.shm_w, client.shm_h, GL_RGBA, GL_UNSIGNED_BYTE, client.shm_data);
+                glBindTexture(GL_TEXTURE_2D, 0);
             }
             break;
         }
@@ -236,6 +359,8 @@ void IpcServer::handle_client_message(ClientConnection& client) {
         default:
             break;
     }
+
+    return true;
 }
 
 void IpcServer::dispatch_events() {
@@ -243,7 +368,9 @@ void IpcServer::dispatch_events() {
 
     for (auto& client : clients_) {
         if (client.fd >= 0) {
-            handle_client_message(client);
+            while (client.fd >= 0 && handle_client_message(client)) {
+                // Czytaj kolejne komunikaty z bufora klienta
+            }
         }
     }
 
@@ -257,7 +384,7 @@ void IpcServer::dispatch_events() {
 
 void IpcServer::shutdown() {
     for (auto& client : clients_) {
-        if (client.fd >= 0) ::close(client.fd);
+        cleanup_client(client);
     }
     clients_.clear();
 
