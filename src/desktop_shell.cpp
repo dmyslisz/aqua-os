@@ -1,4 +1,5 @@
 #include "desktop_shell.hpp"
+#include "font_renderer.hpp"
 #include <cmath>
 #include <iostream>
 #include <ctime>
@@ -25,6 +26,11 @@ DesktopShell::~DesktopShell() {
 bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
     screen_w_ = screen_width;
     screen_h_ = screen_height;
+
+    font_ = std::make_unique<FontRenderer>();
+    if (!font_->initialize(screen_width, screen_height)) {
+        std::cerr << "[Aqua Shell] Inicjalizacja FontRenderer nie powiodla sie." << std::endl;
+    }
 
     // Definiujemy zestaw ikon w Docku w stylu macOS
     dock_items_ = {
@@ -173,114 +179,131 @@ int DesktopShell::handle_pointer_click(float cursor_x, float cursor_y) {
 }
 
 void DesktopShell::render_top_bar(float /*elapsed_time*/) {
-    // 1. Rysowanie tła paska Top Bar (szerokość całego ekranu, 28 px)
+    // 1. Tło paska menu (pełna szerokość, wysokość 28 px)
     glUniform4f(u_rect_, 0.0f, 0.0f, static_cast<float>(screen_w_), TOP_BAR_HEIGHT);
-    // macOS Półprzezroczyste szkło: białe o kryciu 72%
-    glUniform4f(u_color_, 0.95f, 0.95f, 0.96f, 0.78f);
-    glUniform4f(u_border_color_, 0.0f, 0.0f, 0.0f, 0.15f);
+    glUniform4f(u_color_, 0.96f, 0.96f, 0.97f, 0.82f); // Delikatne szkło
+    glUniform4f(u_border_color_, 0.0f, 0.0f, 0.0f, 0.12f);
     glUniform1f(u_radius_, 0.0f);
     glUniform1i(u_type_, 0);
 
     glBindVertexArray(vao_);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // 2. Akcenty na pasku (Logo  i nazwa aktywnej aplikacji: mały elegancki badge)
-    glUniform4f(u_rect_, 14.0f, 6.0f, 16.0f, 16.0f);
-    glUniform4f(u_color_, 0.15f, 0.15f, 0.16f, 0.9f); // Czarne logo
-    glUniform1f(u_radius_, 4.0f);
+    // 2. Rysowanie czytelnego tekstu systemowego na pasku menu
+    // Logo Apple / Aqua: elegancka mała ikona
+    glUniform4f(u_rect_, 14.0f, 8.0f, 12.0f, 12.0f);
+    glUniform4f(u_color_, 0.12f, 0.12f, 0.14f, 0.95f);
+    glUniform1f(u_radius_, 3.0f);
     glUniform1i(u_type_, 2);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // Badge aktywnej aplikacji "Terminal" (długi prostokącik)
-    glUniform4f(u_rect_, 38.0f, 7.0f, 68.0f, 14.0f);
-    glUniform4f(u_color_, 0.2f, 0.2f, 0.22f, 0.85f);
-    glUniform1f(u_radius_, 3.0f);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    // Pobranie aktualnego czasu systemowego dla prawego rogu
+    std::time_t t = std::time(nullptr);
+    std::tm* now = std::localtime(&t);
+    char time_str[32];
+    std::strftime(time_str, sizeof(time_str), "%H:%M", now);
 
-    // Pozycje menu: File, Edit, View (delikatne szare prostokąciki symbolizujące tekst)
-    float menu_x = 118.0f;
-    float widths[] = { 32.0f, 36.0f, 40.0f, 54.0f };
-    for (float w : widths) {
-        glUniform4f(u_rect_, menu_x, 9.0f, w, 10.0f);
-        glUniform4f(u_color_, 0.35f, 0.35f, 0.38f, 0.45f);
-        glUniform1f(u_radius_, 2.0f);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        menu_x += w + 14.0f;
+    if (font_) {
+        // Nazwa aktywnej aplikacji: pogrubione "Terminal"
+        font_->draw_text("Terminal", 36.0f, 8.0f, 1.4f, 0x1A1A1CFF);
+
+        // Pozycje menu systemowego
+        font_->draw_text("File  Edit  View  Window  Help", 126.0f, 8.0f, 1.35f, 0x3A3A3DFF);
+
+        // Prawa strona: Godzina
+        font_->draw_text(time_str, static_cast<float>(screen_w_ - 62.0f), 8.0f, 1.4f, 0x1A1A1CFF);
     }
-
-    // Prawa strona paska menu: Zegar i wskaźniki statusu
-    glUniform4f(u_rect_, screen_w_ - 90.0f, 7.0f, 76.0f, 14.0f);
-    glUniform4f(u_color_, 0.22f, 0.22f, 0.24f, 0.75f);
-    glUniform1f(u_radius_, 3.0f);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
 void DesktopShell::render_dock(float cursor_x, float cursor_y) {
-    // Obliczanie dynamicznego powiększania ikon (macOS Gaussian Magnification)
-    float dock_center_y = screen_h_ - (DOCK_BASE_ICON_SIZE * 0.5f + DOCK_PADDING);
-    float dist_to_dock_y = std::abs(cursor_y - dock_center_y);
-    bool near_dock = dist_to_dock_y < 120.0f;
+    // Wysokość bazowa i marginesy
+    const float padding_y = 8.0f;
+    const float padding_x = 10.0f;
+    const float bottom_margin = 8.0f;
 
-    float total_dock_width = DOCK_PADDING;
-    const float sigma = 65.0f; // Szerokość fali powiększenia
+    // Kursor musi być DOKŁADNIE w strefie Docka, aby aktywować powiększenie
+    // Obliczamy najpierw pozycję bazową
+    float base_dock_h = DOCK_BASE_ICON_SIZE + padding_y * 2.0f;
+    float base_dock_top = screen_h_ - base_dock_h - bottom_margin;
 
+    // Powiększenie działa TYLKO gdy kursor znajduje się na Docku lub bezpośrednio nad nim (max 20 px wyżej)
+    bool is_cursor_over_dock = (cursor_y >= (base_dock_top - 15.0f)) && (cursor_y <= screen_h_);
+
+    const float sigma = 50.0f; // Precyzyjna, wąska fala (powiększa głównie ikonę bezpośrednio pod myszką)
+    float max_current_icon_size = DOCK_BASE_ICON_SIZE;
+
+    // 1. Obliczanie rozmiarów ikon
     for (auto& item : dock_items_) {
         float size = DOCK_BASE_ICON_SIZE;
-        if (near_dock) {
-            float dist_x = cursor_x - (item.base_x + DOCK_BASE_ICON_SIZE * 0.5f);
-            float factor = std::exp(-(dist_x * dist_x) / (2.0f * sigma * sigma));
-            // Płynny spadek wraz z odległością w pionie
-            float y_factor = std::max(0.0f, 1.0f - (dist_to_dock_y / 120.0f));
-            size += (DOCK_MAX_ICON_SIZE - DOCK_BASE_ICON_SIZE) * factor * y_factor;
+        if (is_cursor_over_dock) {
+            float dist_x = cursor_x - (item.base_x + item.current_size * 0.5f);
+            if (std::abs(dist_x) < 140.0f) {
+                float factor = std::exp(-(dist_x * dist_x) / (2.0f * sigma * sigma));
+                // Płynne wejście w zależności od pionowej pozycji kursora
+                float y_weight = std::clamp(1.0f - (base_dock_top - cursor_y) / 25.0f, 0.0f, 1.0f);
+                size += (DOCK_MAX_ICON_SIZE - DOCK_BASE_ICON_SIZE) * factor * y_weight;
+            }
         }
         item.current_size = size;
-        total_dock_width += size + DOCK_PADDING;
+        if (size > max_current_icon_size) {
+            max_current_icon_size = size;
+        }
     }
 
-    float dock_h = DOCK_MAX_ICON_SIZE * (near_dock ? 0.95f : 0.85f) + DOCK_PADDING * 1.5f;
-    float dock_x = (screen_w_ - total_dock_width) * 0.5f;
-    float dock_y = screen_h_ - dock_h - 10.0f; // 10 px odstępu od dolnej krawędzi (pływający dock)
+    // 2. Symetryczna wysokość i szerokość kapsuły Docka
+    float total_icons_w = 0.0f;
+    for (const auto& item : dock_items_) {
+        total_icons_w += item.current_size + 8.0f;
+    }
+    total_icons_w -= 8.0f; // Odejmij ostatni odstęp
 
-    // 1. Rysowanie kapsuły Docka (Frosted Glass / Zaokrąglenie 20 px)
-    glUniform4f(u_rect_, dock_x, dock_y, total_dock_width, dock_h);
-    // Szklisty materiał macOS
-    glUniform4f(u_color_, 0.92f, 0.92f, 0.94f, 0.58f);
-    glUniform4f(u_border_color_, 1.0f, 1.0f, 1.0f, 0.65f); // Biały szklany obrys
-    glUniform1f(u_radius_, 20.0f);
+    float dock_w = total_icons_w + padding_x * 2.0f;
+    // Wysokość jest dokładnie dopasowana: najwyższa ikona + 2x równy padding
+    float dock_h = max_current_icon_size + padding_y * 2.0f;
+    float dock_x = (screen_w_ - dock_w) * 0.5f;
+    float dock_y = screen_h_ - dock_h - bottom_margin;
+
+    // 3. Rysowanie kapsuły Docka (idealnie symetryczne szkło)
+    glUniform4f(u_rect_, dock_x, dock_y, dock_w, dock_h);
+    glUniform4f(u_color_, 0.94f, 0.94f, 0.96f, 0.62f);
+    glUniform4f(u_border_color_, 1.0f, 1.0f, 1.0f, 0.70f);
+    glUniform1f(u_radius_, 18.0f);
     glUniform1i(u_type_, 1);
+
+    glBindVertexArray(vao_);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // 2. Rysowanie ikon aplikacji
-    float cur_x = dock_x + DOCK_PADDING;
+    // 4. Rysowanie ikon wyrównanych do dołu kapsuły (z zachowaniem równego paddingu)
+    float cur_x = dock_x + padding_x;
     for (auto& item : dock_items_) {
         item.base_x = cur_x;
-        float item_y = (dock_y + dock_h - DOCK_PADDING * 0.8f) - item.current_size;
+        // Wyrównanie w pionie: ikony stoją na dolnej linii paddingu
+        float item_y = (dock_y + dock_h - padding_y) - item.current_size;
 
-        // Wyciągamy kolory ikony
         float r = ((item.color >> 16) & 0xFF) / 255.0f;
         float g = ((item.color >> 8) & 0xFF) / 255.0f;
         float b = (item.color & 0xFF) / 255.0f;
 
         glUniform4f(u_rect_, cur_x, item_y, item.current_size, item.current_size);
         glUniform4f(u_color_, r, g, b, 1.0f);
-        glUniform4f(u_border_color_, 1.0f, 1.0f, 1.0f, 0.35f);
-        glUniform1f(u_radius_, item.current_size * 0.225f); // Zaokrąglony kształt Apple Squircle
+        glUniform4f(u_border_color_, 1.0f, 1.0f, 1.0f, 0.4f);
+        glUniform1f(u_radius_, item.current_size * 0.225f);
         glUniform1i(u_type_, 2);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        // Kropka aktywnej aplikacji (Running indicator) pod ikoną
+        // Kropka uruchomionej aplikacji
         if (item.is_running) {
             float dot_size = 4.0f;
             float dot_x = cur_x + (item.current_size - dot_size) * 0.5f;
-            float dot_y = dock_y + dock_h - 6.0f;
+            float dot_y = dock_y + dock_h - 4.5f;
             glUniform4f(u_rect_, dot_x, dot_y, dot_size, dot_size);
-            glUniform4f(u_color_, 0.2f, 0.2f, 0.22f, 0.8f);
+            glUniform4f(u_color_, 0.15f, 0.15f, 0.18f, 0.85f);
             glUniform1f(u_radius_, 2.0f);
             glUniform1i(u_type_, 3);
             glDrawArrays(GL_TRIANGLES, 0, 6);
         }
 
-        cur_x += item.current_size + DOCK_PADDING;
+        cur_x += item.current_size + 8.0f;
     }
 }
 
@@ -301,6 +324,7 @@ void DesktopShell::render(float cursor_x, float cursor_y, float elapsed_time) {
 }
 
 void DesktopShell::shutdown() {
+    if (font_) { font_->shutdown(); font_.reset(); }
     if (vao_) { glDeleteVertexArrays(1, &vao_); vao_ = 0; }
     if (vbo_) { glDeleteBuffers(1, &vbo_); vbo_ = 0; }
     if (shell_program_) { glDeleteProgram(shell_program_); shell_program_ = 0; }

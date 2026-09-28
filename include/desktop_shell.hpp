@@ -47,6 +47,7 @@ private:
     float cursor_y_{0.0f};
 
     std::vector<DockItem> dock_items_;
+    std::unique_ptr<class FontRenderer> font_;
 
     // Shadery
     GLuint shell_program_{0};

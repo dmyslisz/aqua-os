@@ -27,6 +27,7 @@ add_executable(aqua-server
     src/window.cpp
     src/compositor.cpp
     src/desktop_shell.cpp
+    src/font_renderer.cpp
 )
 
 target_include_directories(aqua-server PRIVATE
