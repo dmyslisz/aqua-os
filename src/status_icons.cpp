@@ -28,125 +28,104 @@ StatusIconRenderer::~StatusIconRenderer() {
 }
 
 void StatusIconRenderer::generate_icon_textures() {
-    const int N = ICON_RES; // 32x32
+    const int N = 64; // Wysoka rozdzielczość 64x64 dla nieskazitelnej ostrości Retina
+    const int SAMPLES = 4; // 4x4 supersampling dla idealnego antyaliasingu krawędzi
 
-    // 1. LOGO AQUA: Elegancka zaokrąglona kropla wody z wycięciem
-    std::vector<uint8_t> mask_logo(N * N, 0);
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < N; ++x) {
-            float px = (x + 0.5f) / N * 2.0f - 1.0f; // [-1, 1]
-            float py = (y + 0.5f) / N * 2.0f - 1.0f;
-            
-            // Kształt kropli
-            float r_bottom = std::hypot(px, py - 0.2f);
-            bool in_drop = false;
-            if (py >= 0.2f && r_bottom <= 0.65f) in_drop = true;
-            if (py < 0.2f) {
-                float cone_w = (py + 0.85f) * 0.45f;
-                if (std::abs(px) <= cone_w && py >= -0.85f) in_drop = true;
+    auto compute_mask = [&](auto sample_fn) -> std::vector<uint8_t> {
+        std::vector<uint8_t> mask(N * N, 0);
+        for (int y = 0; y < N; ++y) {
+            for (int x = 0; x < N; ++x) {
+                int hits = 0;
+                for (int sy = 0; sy < SAMPLES; ++sy) {
+                    for (int sx = 0; sx < SAMPLES; ++sx) {
+                        float px = (x + (sx + 0.5f) / SAMPLES) / N * 2.0f - 1.0f;
+                        float py = (y + (sy + 0.5f) / SAMPLES) / N * 2.0f - 1.0f;
+                        if (sample_fn(px, py)) hits++;
+                    }
+                }
+                mask[y * N + x] = static_cast<uint8_t>((hits * 255) / (SAMPLES * SAMPLES));
             }
-            // Wewnętrzne wycięcie
-            if (std::hypot(px, py - 0.25f) < 0.28f) in_drop = false;
-
-            if (in_drop) mask_logo[y * N + x] = 255;
         }
-    }
+        return mask;
+    };
+
+    // 1. LOGO AQUA: Elegancka kropla
+    auto mask_logo = compute_mask([](float px, float py) {
+        float r = std::hypot(px, py - 0.2f);
+        bool in_drop = false;
+        if (py >= 0.2f && r <= 0.65f) in_drop = true;
+        if (py < 0.2f && py >= -0.85f && std::abs(px) <= (py + 0.85f) * 0.48f) in_drop = true;
+        if (std::hypot(px, py - 0.22f) < 0.26f) in_drop = false;
+        return in_drop;
+    });
     tex_logo_ = create_texture_from_alpha_mask(mask_logo, N, N);
 
-    // 2. WI-FI: Trzy łuki zasięgu + kropka
-    std::vector<uint8_t> mask_wifi(N * N, 0);
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < N; ++x) {
-            float px = (x + 0.5f) - 16.0f;
-            float py = (y + 0.5f) - 24.0f; // Punkt bazowy na dole
-            float dist = std::hypot(px, py);
-            float angle = std::atan2(-py, px); // Kąt w górę
+    // 2. WI-FI: Trzy gładkie łuki zasięgu + kropka
+    auto mask_wifi = compute_mask([](float px, float py) {
+        float cx = px;
+        float cy = py - 0.65f;
+        float dist = std::hypot(cx, cy);
+        float angle = std::atan2(-cy, cx);
 
-            bool in_sector = (angle >= 0.6f && angle <= (3.14159f - 0.6f));
-            bool is_wifi = false;
-
-            if (in_sector) {
-                // Łuk zewnętrzny
-                if (dist >= 17.0f && dist <= 20.0f) is_wifi = true;
-                // Łuk środkowy
-                if (dist >= 11.5f && dist <= 14.5f) is_wifi = true;
-                // Łuk wewnętrzny
-                if (dist >= 6.0f && dist <= 9.0f) is_wifi = true;
-            }
-            // Kropka bazowa
-            if (dist <= 2.8f && py <= 0.0f) is_wifi = true;
-
-            if (is_wifi) mask_wifi[y * N + x] = 255;
+        bool in_cone = (angle >= 0.72f && angle <= (3.14159f - 0.72f));
+        if (in_cone) {
+            if (dist >= 1.25f && dist <= 1.45f) return true; // Łuk 3
+            if (dist >= 0.85f && dist <= 1.05f) return true; // Łuk 2
+            if (dist >= 0.45f && dist <= 0.65f) return true; // Łuk 1
         }
-    }
+        if (dist <= 0.18f && cy <= 0.0f) return true; // Kropka
+        return false;
+    });
     tex_wifi_ = create_texture_from_alpha_mask(mask_wifi, N, N);
 
-    // 3. SPOTLIGHT: Okrągła lupa z rączką pod kątem 45 stopni
-    std::vector<uint8_t> mask_spotlight(N * N, 0);
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < N; ++x) {
-            float px = (x + 0.5f) - 13.0f;
-            float py = (y + 0.5f) - 13.0f;
-            float r = std::hypot(px, py);
-
-            bool is_lens = (r >= 7.0f && r <= 9.8f);
-            // Rączka (linia x = y od (19, 19) do (26, 26))
-            float rx = (x + 0.5f) - 21.0f;
-            float ry = (y + 0.5f) - 21.0f;
-            float u = (rx + ry) * 0.7071f;
-            float v = (rx - ry) * 0.7071f;
-            bool is_handle = (std::abs(v) <= 1.4f && u >= -1.0f && u <= 8.0f);
-
-            if (is_lens || is_handle) mask_spotlight[y * N + x] = 255;
-        }
-    }
+    // 3. SPOTLIGHT: Lupa z diagramu Apple
+    auto mask_spotlight = compute_mask([](float px, float py) {
+        float r = std::hypot(px + 0.15f, py + 0.15f);
+        if (r >= 0.42f && r <= 0.60f) return true; // Okrągła soczewka
+        // Skośna rączka pod kątem 45 stopni
+        float rx = px - 0.25f;
+        float ry = py - 0.25f;
+        float u = (rx + ry) * 0.7071f;
+        float v = (rx - ry) * 0.7071f;
+        if (std::abs(v) <= 0.08f && u >= 0.0f && u <= 0.55f) return true;
+        return false;
+    });
     tex_spotlight_ = create_texture_from_alpha_mask(mask_spotlight, N, N);
 
-    // 4. CONTROL CENTER: Dwa zaokrąglone suwaki z kropkami (macOS SF Symbol)
-    std::vector<uint8_t> mask_cc(N * N, 0);
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < N; ++x) {
-            bool is_cc = false;
-            // Górny suwak: track y in [7, 13], x in [5, 27]
-            if (y >= 8 && y <= 12 && x >= 6 && x <= 26) {
-                is_cc = true;
-                // Kropka lewa
-                if (std::hypot(x - 11, y - 10) <= 4.0f) is_cc = true;
-            }
-            // Dolny suwak: track y in [19, 23], x in [5, 27]
-            if (y >= 19 && y <= 23 && x >= 6 && x <= 26) {
-                is_cc = true;
-                // Kropka prawa
-                if (std::hypot(x - 21, y - 21) <= 4.0f) is_cc = true;
-            }
-            if (is_cc) mask_cc[y * N + x] = 255;
+    // 4. CONTROL CENTRE: Dwa równoległe zaokrąglone suwaki z kropkami
+    auto mask_cc = compute_mask([](float px, float py) {
+        // Górny suwak: track py in [-0.55, -0.25], px in [-0.75, 0.75]
+        if (py >= -0.52f && py <= -0.28f && std::abs(px) <= 0.70f) {
+            if (std::hypot(px + 0.35f, py + 0.40f) <= 0.25f) return true; // Kropka lewa
+            if (std::abs(px) <= 0.65f) return true;
         }
-    }
+        // Dolny suwak: track py in [0.25, 0.55], px in [-0.75, 0.75]
+        if (py >= 0.28f && py <= 0.52f && std::abs(px) <= 0.70f) {
+            if (std::hypot(px - 0.35f, py - 0.40f) <= 0.25f) return true; // Kropka prawa
+            if (std::abs(px) <= 0.65f) return true;
+        }
+        return false;
+    });
     tex_control_center_ = create_texture_from_alpha_mask(mask_cc, N, N);
 
-    // 5. BATERIA: Zaokrąglony obrys z bolcem
-    std::vector<uint8_t> mask_battery(N * N, 0);
-    for (int y = 0; y < N; ++y) {
-        for (int x = 0; x < N; ++x) {
-            bool is_bat = false;
-            // Obrys zewnętrzny [3..25, 9..23]
-            if (x >= 4 && x <= 25 && y >= 9 && y <= 23) {
-                // Zaokrąglenie rogów
-                int corner_dx = std::max(0, std::max(6 - x, x - 23));
-                int corner_dy = std::max(0, std::max(11 - y, y - 21));
-                if (std::hypot(corner_dx, corner_dy) <= 2.2f) {
-                    // Ramka zewnętrzna 1.5 px
-                    if (x <= 5 || x >= 24 || y <= 10 || y >= 22) is_bat = true;
-                    // Wypełnienie baterii (np. 80%)
-                    if (x >= 7 && x <= 21 && y >= 12 && y <= 20) is_bat = true;
-                }
+    // 5. BATERIA: Panoramiczna ramka z bolcem (jak w macOS)
+    auto mask_battery = compute_mask([](float px, float py) {
+        // Korpus: px in [-0.85, 0.65], py in [-0.42, 0.42]
+        if (px >= -0.85f && px <= 0.65f && std::abs(py) <= 0.42f) {
+            // Zewnętrzna ramka
+            bool outer = true;
+            // Wnętrze puste
+            if (px >= -0.72f && px <= 0.52f && std::abs(py) <= 0.30f) {
+                // Wypełnienie baterii zielonym/poziomem (np. 85%)
+                if (px <= 0.34f) return true;
+                return false;
             }
-            // Bolec baterii [26..28, 13..19]
-            if (x >= 26 && x <= 28 && y >= 13 && y <= 19) is_bat = true;
-
-            if (is_bat) mask_battery[y * N + x] = 255;
+            return outer;
         }
-    }
+        // Zewnętrzny bolec baterii po prawej stronie: px in [0.65, 0.80], py in [-0.18, 0.18]
+        if (px >= 0.65f && px <= 0.80f && std::abs(py) <= 0.18f) return true;
+        return false;
+    });
     tex_battery_ = create_texture_from_alpha_mask(mask_battery, N, N);
 }
 

@@ -217,13 +217,13 @@ void DesktopShell::render_top_bar(float /*elapsed_time*/) {
         }
     }
 
-    // 4. Prawa strona: Ikony statusu (Bateria, Wi-Fi, Spotlight, Control Center) i Zegar
+    // 4. Prawa strona: Ikony statusu (Wi-Fi, Bateria, Spotlight, Control Centre) i Zegar z diagramu Apple
     std::time_t t = std::time(nullptr);
     std::tm* now = std::localtime(&t);
     char time_str[64];
     std::strftime(time_str, sizeof(time_str), "%a %d %b  %H:%M", now);
 
-    float right_margin = 14.0f;
+    float right_margin = 16.0f;
     float time_w = font_ ? font_->measure_text_width(time_str) : 90.0f;
     float time_x = screen_w_ - right_margin - time_w;
 
@@ -231,25 +231,25 @@ void DesktopShell::render_top_bar(float /*elapsed_time*/) {
         font_->draw_text(time_str, time_x, 6.0f, 0x1A1A1CFF);
     }
 
-    // Ikony po lewej stronie zegara (z precyzyjnym odstępem)
-    float cur_icon_x = time_x - 14.0f;
+    // Odsuwamy się w lewo od zegara z zachowaniem 18 px oddechu
+    float cur_icon_x = time_x - 18.0f;
 
     if (status_icons_) {
-        // A. Control Center (podwójny suwak macOS SF Symbol)
-        cur_icon_x -= 18.0f;
-        status_icons_->draw_icon(StatusIconType::ControlCenter, cur_icon_x, 6.5f, 15.0f, 15.0f, 0x2C2C2EFF);
+        // A. Control Centre (suwaki)
+        cur_icon_x -= 16.0f;
+        status_icons_->draw_icon(StatusIconType::ControlCenter, cur_icon_x, 7.5f, 16.0f, 13.0f, 0x2C2C2EFF);
 
-        // B. Lupa Spotlight
-        cur_icon_x -= 20.0f;
-        status_icons_->draw_icon(StatusIconType::Spotlight, cur_icon_x, 6.5f, 15.0f, 15.0f, 0x2C2C2EFF);
+        // B. Spotlight (lupa)
+        cur_icon_x -= (14.0f + 16.0f);
+        status_icons_->draw_icon(StatusIconType::Spotlight, cur_icon_x, 7.0f, 14.0f, 14.0f, 0x2C2C2EFF);
 
-        // C. Wi-Fi
-        cur_icon_x -= 22.0f;
-        status_icons_->draw_icon(StatusIconType::Wifi, cur_icon_x, 6.5f, 16.0f, 15.0f, 0x2C2C2EFF);
+        // C. Bateria (panoramiczna 24x11 px z diagramu Apple)
+        cur_icon_x -= (24.0f + 16.0f);
+        status_icons_->draw_icon(StatusIconType::Battery, cur_icon_x, 8.5f, 24.0f, 11.0f, 0x2C2C2EFF);
 
-        // D. Bateria
-        cur_icon_x -= 26.0f;
-        status_icons_->draw_icon(StatusIconType::Battery, cur_icon_x, 6.5f, 22.0f, 15.0f, 0x2C2C2EFF);
+        // D. Wi-Fi (16x12 px)
+        cur_icon_x -= (16.0f + 16.0f);
+        status_icons_->draw_icon(StatusIconType::Wifi, cur_icon_x, 8.0f, 16.0f, 12.0f, 0x2C2C2EFF);
     }
 }
 
