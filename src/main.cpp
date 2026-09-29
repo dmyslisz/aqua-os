@@ -186,20 +186,29 @@ int main() {
         precision highp float;
         in vec2 uv;
         out vec4 FragColor;
-        uniform float u_time;
 
         void main() {
-            vec3 col1 = vec3(0.08, 0.15, 0.35); // Granat macOS
-            vec3 col2 = vec3(0.85, 0.25, 0.45); // Karmin
-            vec3 col3 = vec3(0.12, 0.65, 0.75); // Błękit
+            // Statyczna, elegancka tapeta macOS Sequoia (Dark Glass Mesh)
+            vec3 deep_space  = vec3(0.045, 0.055, 0.110); // Ciemny granat tła
+            vec3 royal_blue  = vec3(0.090, 0.220, 0.580); // Szafir macOS
+            vec3 sunset_rose = vec3(0.720, 0.190, 0.380); // Ciepły akcent zmierzchu
+            vec3 soft_cyan   = vec3(0.120, 0.520, 0.680); // Błękit akcentu
 
-            float wave1 = sin(uv.x * 3.0 + u_time * 0.8) * 0.5 + 0.5;
-            float wave2 = cos(uv.y * 3.0 - u_time * 0.6) * 0.5 + 0.5;
+            float d_top_right = distance(uv, vec2(0.85, 0.15));
+            float d_bottom_left = distance(uv, vec2(0.18, 0.88));
+            float d_center = distance(uv, vec2(0.48, 0.45));
 
-            vec3 finalCol = mix(col1, col2, wave1);
-            finalCol = mix(finalCol, col3, wave2 * 0.6);
+            vec3 col = deep_space;
+            col = mix(royal_blue, col, clamp(d_center * 1.05, 0.0, 1.0));
+            col = mix(sunset_rose, col, smoothstep(0.05, 0.90, d_top_right) * 0.45);
+            col = mix(soft_cyan, col, smoothstep(0.05, 0.85, d_bottom_left) * 0.35);
 
-            FragColor = vec4(finalCol, 1.0);
+            // Subtelna winieta Apple na krawędziach ekranu
+            float vignette = uv.x * (1.0 - uv.x) * uv.y * (1.0 - uv.y) * 16.0;
+            vignette = clamp(pow(vignette, 0.22), 0.0, 1.0);
+            col *= mix(0.80, 1.0, vignette);
+
+            FragColor = vec4(col, 1.0);
         }
     )";
 
@@ -209,8 +218,6 @@ int main() {
     glAttachShader(prog, vs);
     glAttachShader(prog, fs);
     glLinkProgram(prog);
-
-    GLint time_loc = glGetUniformLocation(prog, "u_time");
 
     float vertices[] = {
         -1.0f, -1.0f,
@@ -289,10 +296,8 @@ int main() {
             // KROK 1: Przechwycenie sceny (tapeta + okna) do bufora FBO
             blur.begin_scene();
 
-            // 1a. Tło pulpitu (macOS Mesh Gradient)
+            // 1a. Tło pulpitu (Statyczna elegancka tapeta macOS Sequoia)
             glUseProgram(prog);
-            glUniform1f(time_loc, elapsed);
-
             glBindVertexArray(vao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 

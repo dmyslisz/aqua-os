@@ -17,6 +17,25 @@ GLuint compile_shader(GLenum type, const char* src) {
     return s;
 }
 
+float compute_bounce_offset(float timer) {
+    // 2 naturalne, sprężyste podskoki (jak w macOS):
+    // Skok 1: czas [0.0s, 0.38s], wysokość 24px
+    // Skok 2: czas [0.38s, 0.68s], wysokość 8px
+    const float t1 = 0.38f;
+    const float t2 = 0.68f;
+
+    if (timer <= 0.0f) return 0.0f;
+    if (timer < t1) {
+        float phase = timer / t1;
+        return std::sin(phase * 3.14159265f) * 24.0f;
+    }
+    if (timer < t2) {
+        float phase = (timer - t1) / (t2 - t1);
+        return std::sin(phase * 3.14159265f) * 8.0f;
+    }
+    return 0.0f;
+}
+
 } // namespace
 
 DesktopShell::DesktopShell() = default;
@@ -199,10 +218,6 @@ void DesktopShell::set_item_running(const std::string& name, bool running) {
     for (auto& item : dock_items_) {
         if (item.name == name || item.name.find(name) != std::string::npos) {
             item.is_running = running;
-            if (running && item.is_bouncing && item.bounce_timer > 0.4f) {
-                item.is_bouncing = false;
-                item.bounce_timer = 0.0f;
-            }
         }
     }
 }
@@ -400,15 +415,7 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
         auto& item = dock_items_[i];
         item.base_x = cur_x;
 
-        float bounce_offset = 0.0f;
-        if (item.is_bouncing) {
-            float t = item.bounce_timer;
-            float phase = std::fmod(t, 0.45f) / 0.45f;
-            float height = std::sin(phase * 3.14159265f);
-            float decay = std::max(0.0f, 1.0f - (t / 2.0f) * 0.4f);
-            bounce_offset = height * 26.0f * decay;
-        }
-
+        float bounce_offset = item.is_bouncing ? compute_bounce_offset(item.bounce_timer) : 0.0f;
         float item_y = base_ground_y - item.current_size - bounce_offset;
 
         float r = ((item.color >> 16) & 0xFF) / 255.0f;
@@ -450,15 +457,7 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
         for (size_t i = 0; i < dock_items_.size(); ++i) {
             const auto& item = dock_items_[i];
 
-            float bounce_offset = 0.0f;
-            if (item.is_bouncing) {
-                float t = item.bounce_timer;
-                float phase = std::fmod(t, 0.45f) / 0.45f;
-                float height = std::sin(phase * 3.14159265f);
-                float decay = std::max(0.0f, 1.0f - (t / 2.0f) * 0.4f);
-                bounce_offset = height * 26.0f * decay;
-            }
-
+            float bounce_offset = item.is_bouncing ? compute_bounce_offset(item.bounce_timer) : 0.0f;
             float item_y = base_ground_y - item.current_size - bounce_offset;
             float glyph_size = item.current_size * 0.56f;
             float glyph_x = item.base_x + (item.current_size - glyph_size) * 0.5f;
@@ -524,7 +523,7 @@ void DesktopShell::render(float cursor_x, float cursor_y, float elapsed_time, GL
     for (auto& item : dock_items_) {
         if (item.is_bouncing) {
             item.bounce_timer += dt;
-            if (item.bounce_timer >= 2.0f) {
+            if (item.bounce_timer >= 0.68f) {
                 item.is_bouncing = false;
                 item.bounce_timer = 0.0f;
             }
