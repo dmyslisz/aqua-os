@@ -137,3 +137,19 @@ target_compile_options(aqua-sysmon PRIVATE
     -O2
 )
 
+# Natywna aplikacja: Emulator Terminala macOS z PTY (aqua-term)
+add_executable(aqua-term
+    apps/term.cpp
+)
+
+target_link_libraries(aqua-term PRIVATE
+    aqua-client
+    $<$<PLATFORM_ID:FreeBSD>:util>
+)
+
+target_compile_options(aqua-term PRIVATE
+    -Wall
+    -Wextra
+    -O2
+)
+

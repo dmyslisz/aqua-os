@@ -80,11 +80,7 @@ int main() {
         return 1;
     }
 
-    // Tworzymy pierwsze okno na pulpicie
-    auto win1 = std::make_shared<aqua::Window>(1, 240.0f, 140.0f, 840.0f, 520.0f, "Terminal");
-    compositor.add_window(win1);
-
-    static uint32_t next_win_id = 2;
+    static uint32_t next_win_id = 1;
 
     // Podpięcie zdarzeń gładzika / myszy
     input.set_pointer_callback([&cursor, &compositor, &shell](const aqua::PointerEvent& e) {
@@ -126,19 +122,9 @@ int main() {
                             }
                             break;
                         }
-                        case 1: { // Terminal
-                            auto win = compositor.find_window_by_title("Terminal");
-                            if (win) {
-                                compositor.bring_to_front(win->id());
-                            } else {
-                                float offset = (next_win_id % 5) * 35.0f;
-                                auto term_win = std::make_shared<aqua::Window>(
-                                    next_win_id++, 240.0f + offset, 140.0f + offset, 800.0f, 500.0f, "Terminal"
-                                );
-                                compositor.add_window(term_win);
-                            }
+                        case 1: // Terminal (aqua-term z PTY i powłoką sh/zsh)
+                            launch_or_focus("Terminal", "./aqua-term");
                             break;
-                        }
                         case 2: // Calculator (aqua-calc)
                             launch_or_focus("Calculator", "./aqua-calc");
                             break;
@@ -265,16 +251,20 @@ int main() {
     });
 
     // Przekazywanie zdarzeń klawiatury do aktywnego okna
+    static bool s_ctrl = false;
+    static bool s_alt = false;
+
     input.set_key_callback([&compositor, &ipc](const aqua::KeyEvent& e) {
-        if (e.is_press) {
-            std::cout << "[Aqua Event] Klawisz: " << e.key << std::endl;
-            // 1 = KEY_ESC, 16 = KEY_Q
-            if (e.key == 1 || e.key == 16) {
-                std::cout << "[Aqua Event] Wcisnieto klawisz wyjscia. Zamykanie..." << std::endl;
-                g_running = false;
-                return;
-            }
+        if (e.key == 29 || e.key == 97) s_ctrl = e.is_press;
+        if (e.key == 56 || e.key == 100) s_alt = e.is_press;
+
+        // Awaryjne zamknięcie serwera graficznego: Ctrl + Alt + Backspace (14) lub Ctrl + Alt + Esc (1)
+        if (e.is_press && s_ctrl && s_alt && (e.key == 14 || e.key == 1)) {
+            std::cout << "[Aqua Event] Awaryjne wyjście (Ctrl+Alt+Backspace). Zamykanie serwera..." << std::endl;
+            g_running = false;
+            return;
         }
+
         uint32_t focused_id = compositor.focused_window_id();
         if (focused_id != 0) {
             aqua::MsgInputEvent ev{3, 0.0f, 0.0f, e.key, e.is_press ? 1u : 0u};
