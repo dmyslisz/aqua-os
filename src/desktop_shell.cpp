@@ -17,23 +17,12 @@ GLuint compile_shader(GLenum type, const char* src) {
     return s;
 }
 
-float compute_bounce_offset(float timer) {
-    // 2 naturalne, sprężyste podskoki (jak w macOS):
-    // Skok 1: czas [0.0s, 0.38s], wysokość 24px
-    // Skok 2: czas [0.38s, 0.68s], wysokość 8px
-    const float t1 = 0.38f;
-    const float t2 = 0.68f;
+constexpr float DOCK_BOUNCE_PERIOD = 0.42f;
 
+float compute_bounce_offset(float timer) {
     if (timer <= 0.0f) return 0.0f;
-    if (timer < t1) {
-        float phase = timer / t1;
-        return std::sin(phase * 3.14159265f) * 24.0f;
-    }
-    if (timer < t2) {
-        float phase = (timer - t1) / (t2 - t1);
-        return std::sin(phase * 3.14159265f) * 8.0f;
-    }
-    return 0.0f;
+    float phase = std::fmod(timer, DOCK_BOUNCE_PERIOD) / DOCK_BOUNCE_PERIOD;
+    return std::sin(phase * 3.14159265f) * 24.0f;
 }
 
 } // namespace
@@ -522,10 +511,23 @@ void DesktopShell::render(float cursor_x, float cursor_y, float elapsed_time, GL
     }
     last_elapsed_ = elapsed_time;
 
+    const float MAX_BOUNCE_TIME = 5.0f;
+
     for (auto& item : dock_items_) {
         if (item.is_bouncing) {
+            float prev_timer = item.bounce_timer;
             item.bounce_timer += dt;
-            if (item.bounce_timer >= 0.68f) {
+
+            int prev_cycle = static_cast<int>(prev_timer / DOCK_BOUNCE_PERIOD);
+            int cur_cycle = static_cast<int>(item.bounce_timer / DOCK_BOUNCE_PERIOD);
+
+            // Kończymy podskoki dokładnie przy dotknięciu podłoża:
+            // 1. Aplikacja się uruchomiła (is_running) i wykonała co najmniej 1 pełny skok
+            // 2. Lub upłynął limit 5 sekund (np. dla Kosza lub nieuruchomionych apek)
+            bool should_stop = (item.bounce_timer >= MAX_BOUNCE_TIME) ||
+                               (item.is_running && item.bounce_timer >= DOCK_BOUNCE_PERIOD);
+
+            if (should_stop && (cur_cycle > prev_cycle || item.bounce_timer >= (MAX_BOUNCE_TIME + DOCK_BOUNCE_PERIOD))) {
                 item.is_bouncing = false;
                 item.bounce_timer = 0.0f;
             }
