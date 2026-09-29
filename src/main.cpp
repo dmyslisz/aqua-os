@@ -93,16 +93,27 @@ int main() {
             if (e.is_button_press) {
                 int clicked_icon = shell.handle_pointer_click(cursor.x(), cursor.y());
                 if (clicked_icon >= 0) {
+                    std::cout << "[Aqua Dock] Kliknięto ikonę Docka: " << clicked_icon << std::endl;
                     shell.start_bounce(clicked_icon);
 
                     auto launch_or_focus = [&](const std::string& title_query, const char* exec_cmd) {
                         auto win = compositor.find_window_by_title(title_query);
                         if (win) {
+                            std::cout << "[Aqua Server] Przywracanie okna na wierzch: " << title_query << std::endl;
                             compositor.bring_to_front(win->id());
                         } else if (exec_cmd) {
+                            std::cout << "[Aqua Server] Uruchamianie aplikacji: " << exec_cmd << std::endl;
                             pid_t pid = fork();
                             if (pid == 0) {
                                 execl(exec_cmd, exec_cmd, nullptr);
+                                std::string base_name = exec_cmd;
+                                if (base_name.rfind("./", 0) == 0) base_name = base_name.substr(2);
+                                std::string alt1 = "build/" + base_name;
+                                execl(alt1.c_str(), alt1.c_str(), nullptr);
+                                std::string alt2 = "/home/dawid/aqua-os/build/" + base_name;
+                                execl(alt2.c_str(), alt2.c_str(), nullptr);
+                                execlp(base_name.c_str(), base_name.c_str(), nullptr);
+                                std::cerr << "[Aqua Server] Błąd execl dla '" << exec_cmd << "': " << std::strerror(errno) << std::endl;
                                 _exit(1);
                             }
                         }

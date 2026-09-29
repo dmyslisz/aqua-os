@@ -20,6 +20,14 @@
 #include <cerrno>
 #include <poll.h>
 
+#if defined(__FreeBSD__)
+#include <libutil.h>
+#elif defined(__APPLE__)
+#include <util.h>
+#else
+#include <pty.h>
+#endif
+
 namespace aqua {
 
 // Standardowa paleta 16 kolorów ANSI (zgodna z macOS Terminal Dark)
@@ -112,11 +120,12 @@ public:
             }
         }
 
-        // 3. Sprawdź czy proces potomny jeszcze żyje
+        // 3. Sprawdź czy proces potomny zakończył działanie
         if (child_pid_ > 0) {
             int status = 0;
             pid_t res = waitpid(child_pid_, &status, WNOHANG);
-            if (res > 0) {
+            if (res > 0 && (WIFEXITED(status) || WIFSIGNALED(status))) {
+                child_pid_ = -1;
                 close();
             }
         }
@@ -268,68 +277,35 @@ private:
     }
 
     bool open_pty() {
-        pty_master_ = posix_openpt(O_RDWR | O_NOCTTY);
-        if (pty_master_ < 0) return false;
+        struct winsize ws{};
+        ws.ws_col = static_cast<unsigned short>(cols_);
+        ws.ws_row = static_cast<unsigned short>(rows_);
 
-        if (grantpt(pty_master_) != 0 || unlockpt(pty_master_) != 0) {
-            ::close(pty_master_);
-            pty_master_ = -1;
-            return false;
-        }
-
-        const char* pts_name = ptsname(pty_master_);
-        if (!pts_name) {
-            ::close(pty_master_);
-            pty_master_ = -1;
-            return false;
-        }
-
-        int slave_fd = open(pts_name, O_RDWR | O_NOCTTY);
-        if (slave_fd < 0) {
-            ::close(pty_master_);
-            pty_master_ = -1;
-            return false;
-        }
-
-        child_pid_ = fork();
+        child_pid_ = forkpty(&pty_master_, nullptr, nullptr, &ws);
         if (child_pid_ < 0) {
-            ::close(slave_fd);
-            ::close(pty_master_);
-            pty_master_ = -1;
+            std::cerr << "[Terminal] forkpty zakonczone bledem: " << std::strerror(errno) << std::endl;
             return false;
         }
 
         if (child_pid_ == 0) {
-            ::close(pty_master_);
-            setsid();
-#if defined(TIOCSCTTY)
-            ioctl(slave_fd, TIOCSCTTY, 0);
-#endif
-            dup2(slave_fd, STDIN_FILENO);
-            dup2(slave_fd, STDOUT_FILENO);
-            dup2(slave_fd, STDERR_FILENO);
-            ::close(slave_fd);
-
-            struct winsize ws{};
-            ws.ws_col = static_cast<unsigned short>(cols_);
-            ws.ws_row = static_cast<unsigned short>(rows_);
-            ioctl(STDIN_FILENO, TIOCSWINSZ, &ws);
-
             setenv("TERM", "xterm-256color", 1);
             setenv("COLORTERM", "truecolor", 1);
             setenv("LANG", "C.UTF-8", 1);
 
             const char* shell = getenv("SHELL");
-            if (!shell || !*shell) {
+            if (!shell || access(shell, X_OK) != 0) {
                 if (access("/usr/local/bin/zsh", X_OK) == 0) shell = "/usr/local/bin/zsh";
                 else if (access("/bin/csh", X_OK) == 0) shell = "/bin/csh";
                 else shell = "/bin/sh";
             }
+
+            execl(shell, shell, "-i", nullptr);
             execl(shell, shell, nullptr);
+            execl("/bin/csh", "csh", "-i", nullptr);
+            execl("/bin/sh", "sh", "-i", nullptr);
             _exit(127);
         }
 
-        ::close(slave_fd);
         int flags = fcntl(pty_master_, F_GETFL, 0);
         fcntl(pty_master_, F_SETFL, flags | O_NONBLOCK);
         return true;
@@ -599,6 +575,7 @@ private:
 } // namespace aqua
 
 int main(int argc, char* argv[]) {
+    std::cout << "[Terminal] Uruchamianie emulatora aqua-term..." << std::endl;
     aqua::Application app(argc, argv, "Terminal");
     if (!app.initialize()) {
         std::cerr << "[Terminal] Blad polaczenia z aqua-server!" << std::endl;
@@ -607,6 +584,7 @@ int main(int argc, char* argv[]) {
 
     auto win = std::make_shared<aqua::TerminalWindow>(780, 480);
     app.add_window(win);
+    std::cout << "[Terminal] Okno zarejestrowane w Aqua WindowServer." << std::endl;
 
     return app.run();
 }
