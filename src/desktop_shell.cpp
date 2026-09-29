@@ -107,11 +107,11 @@ bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
                         vec2 screen_pos = u_rect.xy + v_local_pos;
                         vec2 screen_uv = vec2(screen_pos.x / u_screen_size.x, 1.0 - (screen_pos.y / u_screen_size.y));
                         vec3 blurred = texture(u_blur_tex, screen_uv).rgb;
-                        // macOS Frosted Glass: mleczne zabarwienie matowego szkła
-                        vec3 frosted = mix(blurred, vec3(0.96, 0.96, 0.98), 0.45);
-                        FragColor = vec4(frosted, 0.92);
+                        // macOS Frosted Glass: jasne, krystalicznie mleczne matowe szkło
+                        vec3 frosted = mix(blurred, vec3(0.98, 0.98, 1.0), 0.78);
+                        FragColor = vec4(frosted, 0.94);
                     } else {
-                        FragColor = u_color;
+                        FragColor = vec4(0.96, 0.96, 0.98, 0.92);
                     }
                 }
                 return;
@@ -235,7 +235,7 @@ void DesktopShell::render_top_bar(float /*elapsed_time*/) {
 
     // 1. Tło paska menu (28 px wysokości, półprzezroczyste matowe szkło macOS)
     glUniform4f(u_rect_, 0.0f, 0.0f, static_cast<float>(screen_w_), TOP_BAR_HEIGHT);
-    glUniform4f(u_color_, 0.96f, 0.96f, 0.97f, 0.82f);
+    glUniform4f(u_color_, 0.97f, 0.97f, 0.99f, 0.94f);
     glUniform4f(u_border_color_, 0.0f, 0.0f, 0.0f, 0.12f);
     glUniform1f(u_radius_, 0.0f);
     glUniform1i(u_type_, 0);
