@@ -6,15 +6,19 @@
 #include <memory>
 #include <GLES3/gl3.h>
 
+#include "status_icons.hpp"
+
 namespace aqua {
 
 struct DockItem {
     std::string name;
-    std::string icon_char;
+    StatusIconType icon_type{StatusIconType::Finder};
     uint32_t color{0xFFFFFFFF};
     bool is_running{false};
     float current_size{48.0f};
     float base_x{0.0f};
+    bool is_bouncing{false};
+    float bounce_timer{0.0f};
 };
 
 class DesktopShell {
@@ -27,6 +31,11 @@ public:
 
     void handle_pointer_move(float cursor_x, float cursor_y);
     int handle_pointer_click(float cursor_x, float cursor_y); // Zwraca indeks klikniętej ikony Docka (-1 jeśli brak)
+
+    void start_bounce(int index);
+    void set_item_running(const std::string& name, bool running);
+    void set_active_app(const std::string& name) { active_app_name_ = name; }
+    const std::vector<DockItem>& dock_items() const { return dock_items_; }
 
     void render(float cursor_x, float cursor_y, float elapsed_time, GLuint blur_texture = 0);
     void shutdown();
@@ -45,7 +54,9 @@ private:
 
     float cursor_x_{0.0f};
     float cursor_y_{0.0f};
+    float last_elapsed_{0.0f};
     GLuint blur_tex_{0};
+    std::string active_app_name_{"Finder"};
 
     std::vector<DockItem> dock_items_;
     std::unique_ptr<class FontRenderer> font_;

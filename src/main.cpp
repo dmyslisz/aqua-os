@@ -11,6 +11,8 @@
 #include <chrono>
 #include <csignal>
 #include <poll.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 static volatile bool g_running = true;
 
@@ -36,6 +38,7 @@ GLuint compile_shader(GLenum type, const char* src) {
 int main() {
     std::signal(SIGINT, sigint_handler);
     std::signal(SIGTERM, sigint_handler);
+    std::signal(SIGCHLD, SIG_IGN); // Automatyczne sprzątanie procesów potomnych bez zombie
 
     std::cout << "========================================================\n"
               << "  Aqua WindowServer (Quartz FreeBSD) - KROK 4\n"
@@ -92,16 +95,76 @@ int main() {
         }
         if (e.button != 0) {
             if (e.is_button_press) {
-                // Sprawdź czy kliknięto w Dock
                 int clicked_icon = shell.handle_pointer_click(cursor.x(), cursor.y());
                 if (clicked_icon >= 0) {
-                    std::cout << "[Aqua Shell] Kliknieto w ikone Docka: " << clicked_icon << std::endl;
-                    // Jeśli kliknięto w Terminal (indeks 2) lub Finder (0) - stwórz nowe okno!
-                    float offset = (next_win_id % 5) * 40.0f;
-                    auto new_win = std::make_shared<aqua::Window>(
-                        next_win_id++, 280.0f + offset, 160.0f + offset, 760.0f, 480.0f, "New Window"
-                    );
-                    compositor.add_window(new_win);
+                    shell.start_bounce(clicked_icon);
+
+                    auto launch_or_focus = [&](const std::string& title_query, const char* exec_cmd) {
+                        auto win = compositor.find_window_by_title(title_query);
+                        if (win) {
+                            compositor.bring_to_front(win->id());
+                        } else if (exec_cmd) {
+                            pid_t pid = fork();
+                            if (pid == 0) {
+                                execl(exec_cmd, exec_cmd, nullptr);
+                                _exit(1);
+                            }
+                        }
+                    };
+
+                    switch (clicked_icon) {
+                        case 0: { // Finder
+                            auto win = compositor.find_window_by_title("Finder");
+                            if (win) {
+                                compositor.bring_to_front(win->id());
+                            } else {
+                                float offset = (next_win_id % 5) * 35.0f;
+                                auto finder_win = std::make_shared<aqua::Window>(
+                                    next_win_id++, 200.0f + offset, 120.0f + offset, 780.0f, 480.0f, "Finder"
+                                );
+                                compositor.add_window(finder_win);
+                            }
+                            break;
+                        }
+                        case 1: { // Terminal
+                            auto win = compositor.find_window_by_title("Terminal");
+                            if (win) {
+                                compositor.bring_to_front(win->id());
+                            } else {
+                                float offset = (next_win_id % 5) * 35.0f;
+                                auto term_win = std::make_shared<aqua::Window>(
+                                    next_win_id++, 240.0f + offset, 140.0f + offset, 800.0f, 500.0f, "Terminal"
+                                );
+                                compositor.add_window(term_win);
+                            }
+                            break;
+                        }
+                        case 2: // Calculator (aqua-calc)
+                            launch_or_focus("Calculator", "./aqua-calc");
+                            break;
+                        case 3: // Activity Monitor (aqua-sysmon)
+                            launch_or_focus("Activity Monitor", "./aqua-sysmon");
+                            break;
+                        case 4: // Visualizer (aqua-demo-client)
+                            launch_or_focus("Demo", "./aqua-demo-client");
+                            break;
+                        case 5: { // Settings
+                            auto win = compositor.find_window_by_title("Settings");
+                            if (win) {
+                                compositor.bring_to_front(win->id());
+                            } else {
+                                float offset = (next_win_id % 5) * 35.0f;
+                                auto settings_win = std::make_shared<aqua::Window>(
+                                    next_win_id++, 260.0f + offset, 150.0f + offset, 680.0f, 460.0f, "System Settings"
+                                );
+                                compositor.add_window(settings_win);
+                            }
+                            break;
+                        }
+                        case 6: // Trash
+                            std::cout << "[Aqua Dock] Kosz otwarty (Empty Trash)" << std::endl;
+                            break;
+                    }
                     return;
                 }
             }
@@ -245,6 +308,33 @@ int main() {
             blur.draw_scene_to_screen();
 
             // KROK 4: macOS Shell (Top Menu Bar i Dock próbkujące rozmyte tło z blur.blurred_texture())
+            // Synchronizacja stanu aktywnych aplikacji
+            bool has_calc = (compositor.find_window_by_title("Calculator") != nullptr);
+            bool has_sysmon = (compositor.find_window_by_title("Activity Monitor") != nullptr);
+            bool has_visualizer = (compositor.find_window_by_title("Demo") != nullptr);
+            bool has_terminal = (compositor.find_window_by_title("Terminal") != nullptr);
+            bool has_finder = (compositor.find_window_by_title("Finder") != nullptr);
+            bool has_settings = (compositor.find_window_by_title("Settings") != nullptr);
+
+            shell.set_item_running("Calculator", has_calc);
+            shell.set_item_running("Activity Monitor", has_sysmon);
+            shell.set_item_running("Visualizer", has_visualizer);
+            shell.set_item_running("Terminal", has_terminal);
+            shell.set_item_running("Finder", has_finder);
+            shell.set_item_running("Settings", has_settings);
+
+            uint32_t focused_id = compositor.focused_window_id();
+            if (focused_id != 0) {
+                for (const auto& w : compositor.windows()) {
+                    if (w->id() == focused_id) {
+                        shell.set_active_app(w->title());
+                        break;
+                    }
+                }
+            } else {
+                shell.set_active_app("Finder");
+            }
+
             shell.render(cursor.x(), cursor.y(), elapsed, blur.blurred_texture());
 
             // KROK 5: Kursor myszy macOS na samym wierzchu
@@ -257,6 +347,12 @@ int main() {
             }
 
             needs_redraw = false;
+            for (const auto& item : shell.dock_items()) {
+                if (item.is_bouncing) {
+                    needs_redraw = true;
+                    break;
+                }
+            }
             frame_count++;
 
             float fps_elapsed = std::chrono::duration<float>(now - last_fps_time).count();

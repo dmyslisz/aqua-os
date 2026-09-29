@@ -39,16 +39,15 @@ bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
         std::cerr << "[Aqua Shell] Inicjalizacja StatusIconRenderer nie powiodla sie." << std::endl;
     }
 
-    // Aplikacje z macOS 15 (z kolorami odpowiadającymi ikonom z wideo)
+    // Aplikacje z macOS Sequoia z dedykowanymi wektorowymi ikonami Retina
     dock_items_ = {
-        {"Finder", "F", 0xFF2B88D9, true, DOCK_BASE_ICON_SIZE, 0.0f},
-        {"Launchpad", "L", 0xFF6C6C70, false, DOCK_BASE_ICON_SIZE, 0.0f},
-        {"Chrome", "G", 0xFFE04434, true, DOCK_BASE_ICON_SIZE, 0.0f},
-        {"Terminal", "T", 0xFF1C1C1E, true, DOCK_BASE_ICON_SIZE, 0.0f},
-        {"Notes", "N", 0xFFF5C518, false, DOCK_BASE_ICON_SIZE, 0.0f},
-        {"Settings", "S", 0xFF8E8E93, false, DOCK_BASE_ICON_SIZE, 0.0f},
-        {"ScreenFlow", "A", 0xFF2C97DE, false, DOCK_BASE_ICON_SIZE, 0.0f},
-        {"Trash", "R", 0xFFD1D1D6, false, DOCK_BASE_ICON_SIZE, 0.0f}
+        {"Finder", StatusIconType::Finder, 0xFF1D74E8, true, DOCK_BASE_ICON_SIZE, 0.0f, false, 0.0f},
+        {"Terminal", StatusIconType::Terminal, 0xFF202124, true, DOCK_BASE_ICON_SIZE, 0.0f, false, 0.0f},
+        {"Calculator", StatusIconType::Calculator, 0xFF333336, false, DOCK_BASE_ICON_SIZE, 0.0f, false, 0.0f},
+        {"Activity Monitor", StatusIconType::Sysmon, 0xFF182838, false, DOCK_BASE_ICON_SIZE, 0.0f, false, 0.0f},
+        {"Visualizer", StatusIconType::Visualizer, 0xFF632B94, false, DOCK_BASE_ICON_SIZE, 0.0f, false, 0.0f},
+        {"Settings", StatusIconType::Settings, 0xFF8E8E93, false, DOCK_BASE_ICON_SIZE, 0.0f, false, 0.0f},
+        {"Trash", StatusIconType::Trash, 0xFFE0E0E6, false, DOCK_BASE_ICON_SIZE, 0.0f, false, 0.0f}
     };
 
     const char* vs_src = R"(#version 300 es
@@ -189,16 +188,35 @@ void DesktopShell::handle_pointer_move(float cursor_x, float cursor_y) {
     cursor_y_ = cursor_y;
 }
 
+void DesktopShell::start_bounce(int index) {
+    if (index >= 0 && index < static_cast<int>(dock_items_.size())) {
+        dock_items_[index].is_bouncing = true;
+        dock_items_[index].bounce_timer = 0.0f;
+    }
+}
+
+void DesktopShell::set_item_running(const std::string& name, bool running) {
+    for (auto& item : dock_items_) {
+        if (item.name == name || item.name.find(name) != std::string::npos) {
+            item.is_running = running;
+            if (running && item.is_bouncing && item.bounce_timer > 0.4f) {
+                item.is_bouncing = false;
+                item.bounce_timer = 0.0f;
+            }
+        }
+    }
+}
+
 int DesktopShell::handle_pointer_click(float cursor_x, float cursor_y) {
     float dock_base_y = screen_h_ - 68.0f;
-    if (cursor_y < (dock_base_y - 40.0f) || cursor_y > screen_h_) return -1;
+    if (cursor_y < (dock_base_y - 60.0f) || cursor_y > screen_h_) return -1;
 
     for (size_t i = 0; i < dock_items_.size(); ++i) {
         const auto& item = dock_items_[i];
-        float base_ground_y = screen_h_ - 18.0f;
+        float base_ground_y = screen_h_ - 8.0f - 8.0f;
         float item_y = base_ground_y - item.current_size;
         if (cursor_x >= item.base_x && cursor_x <= (item.base_x + item.current_size) &&
-            cursor_y >= item_y && cursor_y <= base_ground_y) {
+            cursor_y >= (item_y - 30.0f) && cursor_y <= (base_ground_y + 12.0f)) {
             return static_cast<int>(i);
         }
     }
@@ -237,11 +255,11 @@ void DesktopShell::render_top_bar(float /*elapsed_time*/) {
     // 3. Typografia lewej strony: aktywna aplikacja i pozycje menu
     if (font_) {
         // Pogrubiona nazwa aktywnej aplikacji
-        font_->draw_text("Terminal", 36.0f, 6.0f, 0x1A1A1CFF);
+        font_->draw_text(active_app_name_.c_str(), 36.0f, 6.0f, 0x1A1A1CFF);
 
         // Standardowe pozycje menu macOS z równymi odstępami
         const char* menu_items[] = {"File", "Edit", "View", "Window", "Help"};
-        float cur_menu_x = 114.0f;
+        float cur_menu_x = 36.0f + font_->measure_text_width(active_app_name_) + 18.0f;
         for (const char* item : menu_items) {
             font_->draw_text(item, cur_menu_x, 6.0f, 0x2C2C2EFF);
             cur_menu_x += font_->measure_text_width(item) + 16.0f;
@@ -289,22 +307,20 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
     glUniform2f(u_screen_size_, static_cast<float>(screen_w_), static_cast<float>(screen_h_));
 
     const float base_icon_size = 48.0f;
-    const float max_icon_size = 86.0f; // Dokładny maksymalny rozmiar z macOS 15 wideo
+    const float max_icon_size = 86.0f;
     const float padding_x = 12.0f;
     const float padding_y = 8.0f;
     const float spacing = 10.0f;
     const float bottom_margin = 8.0f;
+    const float separator_gap = 8.0f;
+    const float separator_width = 1.0f;
 
-    // Kapsuła Docka ma STAŁĄ WYSOKOŚĆ w macOS 15 (nie puchnie ku górze!)
-    // Powiększone ikony WYSTAJĄ W GÓRĘ PONAD KRAWĘDŹ KICKBOARDU
     const float dock_fixed_h = base_icon_size + padding_y * 2.0f;
     const float dock_y = screen_h_ - dock_fixed_h - bottom_margin;
 
-    // Sprawdzenie czy kursor znajduje się na Docku lub w strefie powiększonych ikon
-    bool is_over_dock = (cursor_y >= (dock_y - (max_icon_size - base_icon_size) - 10.0f)) &&
+    bool is_over_dock = (cursor_y >= (dock_y - (max_icon_size - base_icon_size) - 20.0f)) &&
                         (cursor_y <= screen_h_);
 
-    // Fala cosinusowa macOS 15: amplifikacja skupiona wokół kursora
     const float wave_radius = base_icon_size * 2.2f;
     const float PI = 3.1415926535f;
 
@@ -321,7 +337,6 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
             float dist_x = std::abs(cursor_x - icon_center_x);
 
             if (dist_x < wave_radius) {
-                // Cosine Bell Curve
                 float factor = 0.5f * (1.0f + std::cos((PI * dist_x) / wave_radius));
                 size += (max_icon_size - base_icon_size) * factor;
 
@@ -334,19 +349,24 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
         item.current_size = size;
     }
 
-    // 2. Całkowita szerokość Docka
+    // 2. Całkowita szerokość Docka (z uwzględnieniem separatora przed Koszem)
     float total_icons_w = 0.0f;
     for (size_t i = 0; i < dock_items_.size(); ++i) {
         total_icons_w += dock_items_[i].current_size;
-        if (i + 1 < dock_items_.size()) total_icons_w += spacing;
+        if (i + 1 < dock_items_.size()) {
+            if (i == dock_items_.size() - 2) {
+                total_icons_w += separator_gap * 2.0f + separator_width;
+            } else {
+                total_icons_w += spacing;
+            }
+        }
     }
 
     float dock_w = total_icons_w + padding_x * 2.0f;
     float dock_x = (screen_w_ - dock_w) * 0.5f;
 
-    // 3. RYSOWANIE SZKLANEJ KIPSYŁY DOCKA (Stała wysokość, zaokrąglenie 18 px)
+    // 3. RYSOWANIE SZKLANEJ KAPSUŁY DOCKA (Stała wysokość, zaokrąglenie 18 px)
     glUniform4f(u_rect_, dock_x, dock_y, dock_w, dock_fixed_h);
-    // macOS 15 Półprzezroczyste szkło
     glUniform4f(u_color_, 0.95f, 0.95f, 0.97f, 0.62f);
     glUniform4f(u_border_color_, 1.0f, 1.0f, 1.0f, 0.85f);
     glUniform1f(u_radius_, 18.0f);
@@ -365,11 +385,9 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // Wyłącz rozmycie dla rysowania ikon i elementów wnętrza docka
     glUniform1i(u_has_blur_, 0);
 
-    // 4. RYSOWANIE IKON WYRÓWNANYCH DO DOLNEJ LINII DOCKA
-    // Podstawa ikon: screen_h_ - bottom_margin - padding_y
+    // 4. RYSOWANIE IKON WYRÓWNANYCH DO DOLNEJ LINII DOCKA Z FIZYKĄ ODBICIA (BOUNCE)
     float base_ground_y = screen_h_ - bottom_margin - padding_y;
 
     float cur_x = dock_x + padding_x;
@@ -377,12 +395,21 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
     float tooltip_y = 0.0f;
     std::string tooltip_text = "";
 
+    // A. Tła squircli oraz separator
     for (size_t i = 0; i < dock_items_.size(); ++i) {
         auto& item = dock_items_[i];
         item.base_x = cur_x;
 
-        // Ikona rośnie W GÓRĘ – wystaje ponad górną krawędź Docka dokładnie jak na wideo!
-        float item_y = base_ground_y - item.current_size;
+        float bounce_offset = 0.0f;
+        if (item.is_bouncing) {
+            float t = item.bounce_timer;
+            float phase = std::fmod(t, 0.45f) / 0.45f;
+            float height = std::sin(phase * 3.14159265f);
+            float decay = std::max(0.0f, 1.0f - (t / 2.0f) * 0.4f);
+            bounce_offset = height * 26.0f * decay;
+        }
+
+        float item_y = base_ground_y - item.current_size - bounce_offset;
 
         float r = ((item.color >> 16) & 0xFF) / 255.0f;
         float g = ((item.color >> 8) & 0xFF) / 255.0f;
@@ -395,10 +422,65 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
         glUniform1i(u_type_, 2);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        // Kropka uruchomionej aplikacji pod ikoną
+        if (static_cast<int>(i) == hovered_idx && is_over_dock && max_factor > 0.4f) {
+            tooltip_x = cur_x + item.current_size * 0.5f;
+            tooltip_y = item_y - 28.0f;
+            tooltip_text = item.name;
+        }
+
+        if (i == dock_items_.size() - 2) {
+            float sep_x = cur_x + item.current_size + separator_gap;
+            float sep_h = base_icon_size * 0.70f;
+            float sep_y = dock_y + (dock_fixed_h - sep_h) * 0.5f;
+
+            glUniform4f(u_rect_, sep_x, sep_y, separator_width, sep_h);
+            glUniform4f(u_color_, 1.0f, 1.0f, 1.0f, 0.45f);
+            glUniform1f(u_radius_, 0.5f);
+            glUniform1i(u_type_, 3);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+
+            cur_x += item.current_size + separator_gap * 2.0f + separator_width;
+        } else {
+            cur_x += item.current_size + spacing;
+        }
+    }
+
+    // B. Wektorowe symbole wewnątrz ikon (StatusIconRenderer)
+    if (status_icons_) {
+        for (size_t i = 0; i < dock_items_.size(); ++i) {
+            const auto& item = dock_items_[i];
+
+            float bounce_offset = 0.0f;
+            if (item.is_bouncing) {
+                float t = item.bounce_timer;
+                float phase = std::fmod(t, 0.45f) / 0.45f;
+                float height = std::sin(phase * 3.14159265f);
+                float decay = std::max(0.0f, 1.0f - (t / 2.0f) * 0.4f);
+                bounce_offset = height * 26.0f * decay;
+            }
+
+            float item_y = base_ground_y - item.current_size - bounce_offset;
+            float glyph_size = item.current_size * 0.56f;
+            float glyph_x = item.base_x + (item.current_size - glyph_size) * 0.5f;
+            float glyph_y = item_y + (item.current_size - glyph_size) * 0.5f;
+
+            uint32_t tint = 0xFFFFFFFF;
+            if (item.icon_type == StatusIconType::Terminal) tint = 0x30D158FF; // Neonowy terminal green
+            else if (item.icon_type == StatusIconType::Sysmon) tint = 0x30D158FF; // Neonowy puls EKG
+            else if (item.icon_type == StatusIconType::Trash) tint = 0x3A3A3CFF; // Ciemny kontur kosza
+
+            status_icons_->draw_icon(item.icon_type, glyph_x, glyph_y, glyph_size, glyph_size, tint);
+        }
+    }
+
+    // C. Kropki aktywnych aplikacji na kickboardzie Docka
+    glUseProgram(shell_program_);
+    glBindVertexArray(vao_);
+    for (size_t i = 0; i < dock_items_.size(); ++i) {
+        const auto& item = dock_items_[i];
         if (item.is_running) {
             float dot_size = 4.0f;
-            float dot_x = cur_x + (item.current_size - dot_size) * 0.5f;
+            float dot_x = item.base_x + (item.current_size - dot_size) * 0.5f;
             float dot_y = base_ground_y + 2.5f;
             glUniform4f(u_rect_, dot_x, dot_y, dot_size, dot_size);
             glUniform4f(u_color_, 0.15f, 0.15f, 0.18f, 0.85f);
@@ -406,18 +488,9 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
             glUniform1i(u_type_, 3);
             glDrawArrays(GL_TRIANGLES, 0, 6);
         }
-
-        // Zapisz pozycję na etykietę Tooltip nad powiększoną ikoną
-        if (static_cast<int>(i) == hovered_idx && is_over_dock && max_factor > 0.4f) {
-            tooltip_x = cur_x + item.current_size * 0.5f;
-            tooltip_y = item_y - 28.0f;
-            tooltip_text = item.name;
-        }
-
-        cur_x += item.current_size + spacing;
     }
 
-    // 5. ETYKIETA TOOLTIP W STYLU macOS 15 (widoczna na wideo w 0:36 nad ikoną)
+    // D. Tooltip nad powiększoną ikoną
     if (!tooltip_text.empty() && font_) {
         float text_w = font_->measure_text_width(tooltip_text);
         float badge_w = text_w + 16.0f;
@@ -426,13 +499,12 @@ void DesktopShell::render_dock(float cursor_x, float cursor_y) {
 
         glUseProgram(shell_program_);
         glUniform4f(u_rect_, badge_x, tooltip_y, badge_w, badge_h);
-        glUniform4f(u_color_, 0.15f, 0.15f, 0.18f, 0.88f); // Ciemna kapsułka macOS
+        glUniform4f(u_color_, 0.15f, 0.15f, 0.18f, 0.88f);
         glUniform4f(u_border_color_, 1.0f, 1.0f, 1.0f, 0.25f);
         glUniform1f(u_radius_, 6.0f);
         glUniform1i(u_type_, 4);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        // Biały tekst wewnątrz tooltipa
         font_->draw_text(tooltip_text, badge_x + 8.0f, tooltip_y + 3.0f, 0xFFFFFFFF);
     }
 }
@@ -441,6 +513,23 @@ void DesktopShell::render(float cursor_x, float cursor_y, float elapsed_time, GL
     cursor_x_ = cursor_x;
     cursor_y_ = cursor_y;
     blur_tex_ = blur_texture;
+
+    float dt = 0.016f;
+    if (last_elapsed_ > 0.0f && elapsed_time > last_elapsed_) {
+        dt = elapsed_time - last_elapsed_;
+        if (dt > 0.1f) dt = 0.1f;
+    }
+    last_elapsed_ = elapsed_time;
+
+    for (auto& item : dock_items_) {
+        if (item.is_bouncing) {
+            item.bounce_timer += dt;
+            if (item.bounce_timer >= 2.0f) {
+                item.is_bouncing = false;
+                item.bounce_timer = 0.0f;
+            }
+        }
+    }
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

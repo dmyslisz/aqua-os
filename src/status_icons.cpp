@@ -127,6 +127,177 @@ void StatusIconRenderer::generate_icon_textures() {
         return false;
     });
     tex_battery_ = create_texture_from_alpha_mask(mask_battery, N, N);
+
+    // 6. FINDER: Uśmiechnięta dwutonowa twarz macOS
+    auto mask_finder = compute_mask([](float px, float py) {
+        if (std::abs(px) > 0.75f || std::abs(py) > 0.75f) return false;
+
+        // Oczy
+        if (std::hypot(px + 0.32f, (py + 0.20f) * 1.5f) <= 0.11f) return true;
+        if (std::hypot(px - 0.32f, (py + 0.20f) * 1.5f) <= 0.11f) return true;
+
+        // Nos / linia podziału profilu
+        float nose_x = 0.0f;
+        if (py > -0.1f && py < 0.25f) {
+            nose_x = 0.15f * std::sin((py + 0.1f) / 0.35f * 3.14159f);
+        }
+        if (std::abs(px - nose_x) <= 0.06f && py >= -0.55f && py <= 0.22f) return true;
+
+        // Uśmiech
+        if (px >= -0.48f && px <= 0.48f && py >= 0.26f && py <= 0.58f) {
+            float smile_y = 0.34f + (px * px) * 0.95f;
+            if (std::abs(py - smile_y) <= 0.07f) return true;
+        }
+
+        // Zewnętrzny kontur
+        float d_box = std::max(std::abs(px) - 0.70f, std::abs(py) - 0.70f);
+        if (d_box >= -0.06f && d_box <= 0.0f) return true;
+
+        return false;
+    });
+    tex_finder_ = create_texture_from_alpha_mask(mask_finder, N, N);
+
+    // 7. TERMINAL: Prompt chevron `>` i kursor `_`
+    auto mask_terminal = compute_mask([](float px, float py) {
+        // Chevron >
+        float upper_dist = std::abs((px - (-0.55f)) - (py - (-0.40f))) * 0.7071f;
+        float lower_dist = std::abs((px - (-0.55f)) + (py - 0.30f)) * 0.7071f;
+
+        bool in_chevron = false;
+        if (px >= -0.55f && px <= -0.12f) {
+            if (py <= -0.05f && upper_dist <= 0.085f) in_chevron = true;
+            if (py >= -0.05f && lower_dist <= 0.085f) in_chevron = true;
+        }
+
+        // Kursor underscore _
+        bool in_cursor = (px >= 0.02f && px <= 0.58f && py >= 0.20f && py <= 0.32f);
+
+        return in_chevron || in_cursor;
+    });
+    tex_terminal_ = create_texture_from_alpha_mask(mask_terminal, N, N);
+
+    // 8. KALKULATOR: 4 kwadranty symboli (+, -, ×, =)
+    auto mask_calc = compute_mask([](float px, float py) {
+        // Linie podziału siatki
+        if (std::abs(px) <= 0.035f && std::abs(py) <= 0.75f) return true;
+        if (std::abs(py) <= 0.035f && std::abs(px) <= 0.75f) return true;
+
+        // Q1 (Top-Left): Plus +
+        float q1x = px + 0.40f;
+        float q1y = py + 0.40f;
+        if ((std::abs(q1x) <= 0.055f && std::abs(q1y) <= 0.22f) ||
+            (std::abs(q1y) <= 0.055f && std::abs(q1x) <= 0.22f)) return true;
+
+        // Q2 (Top-Right): Minus -
+        float q2x = px - 0.40f;
+        float q2y = py + 0.40f;
+        if (std::abs(q2y) <= 0.055f && std::abs(q2x) <= 0.22f) return true;
+
+        // Q3 (Bottom-Left): Razy ×
+        float q3x = px + 0.40f;
+        float q3y = py - 0.40f;
+        float d1 = std::abs(q3x - q3y) * 0.7071f;
+        float d2 = std::abs(q3x + q3y) * 0.7071f;
+        if ((d1 <= 0.055f && std::hypot(q3x, q3y) <= 0.22f) ||
+            (d2 <= 0.055f && std::hypot(q3x, q3y) <= 0.22f)) return true;
+
+        // Q4 (Bottom-Right): Równe =
+        float q4x = px - 0.40f;
+        float q4y = py - 0.40f;
+        if ((std::abs(q4y - 0.08f) <= 0.045f || std::abs(q4y + 0.08f) <= 0.045f) &&
+            std::abs(q4x) <= 0.22f) return true;
+
+        return false;
+    });
+    tex_calculator_ = create_texture_from_alpha_mask(mask_calc, N, N);
+
+    // 9. MONITOR AKTYWNOŚCI: Krzywa pulsu EKG
+    auto mask_sysmon = compute_mask([](float px, float py) {
+        float target_y = 0.0f;
+        if (px >= -0.85f && px < -0.40f) {
+            target_y = 0.0f;
+        } else if (px >= -0.40f && px < -0.28f) {
+            float t = (px - (-0.40f)) / 0.12f;
+            target_y = std::sin(t * 3.14159f) * 0.22f;
+        } else if (px >= -0.28f && px < -0.05f) {
+            float t = (px - (-0.28f)) / 0.23f;
+            target_y = -std::sin(t * 3.14159f) * 0.75f;
+        } else if (px >= -0.05f && px < 0.18f) {
+            float t = (px - (-0.05f)) / 0.23f;
+            target_y = std::sin(t * 3.14159f) * 0.42f;
+        } else if (px >= 0.18f && px < 0.45f) {
+            float t = (px - 0.18f) / 0.27f;
+            target_y = -std::sin(t * 3.14159f) * 0.25f;
+        } else if (px >= 0.45f && px <= 0.85f) {
+            target_y = 0.0f;
+        } else {
+            return false;
+        }
+
+        if (std::abs(py - target_y) <= 0.075f) return true;
+        return false;
+    });
+    tex_sysmon_ = create_texture_from_alpha_mask(mask_sysmon, N, N);
+
+    // 10. VISUALIZER: Kolorowe słupki audio spectrum
+    auto mask_visualizer = compute_mask([](float px, float py) {
+        float bars_x[] = {-0.56f, -0.28f, 0.0f, 0.28f, 0.56f};
+        float bars_h[] = {0.35f, 0.62f, 0.82f, 0.52f, 0.32f};
+        float bar_w = 0.085f;
+
+        for (int i = 0; i < 5; ++i) {
+            float dx = std::abs(px - bars_x[i]);
+            float dy = std::abs(py);
+            if (dx <= bar_w && dy <= bars_h[i]) {
+                if (dy > bars_h[i] - bar_w) {
+                    float cap_y = dy - (bars_h[i] - bar_w);
+                    if (std::hypot(dx, cap_y) <= bar_w) return true;
+                } else {
+                    return true;
+                }
+            }
+        }
+        return false;
+    });
+    tex_visualizer_ = create_texture_from_alpha_mask(mask_visualizer, N, N);
+
+    // 11. USTAWIENIA: 8-zębna zębatka macOS
+    auto mask_settings = compute_mask([](float px, float py) {
+        float r = std::hypot(px, py);
+        if (r < 0.20f) return false;
+        if (r > 0.78f) return false;
+
+        float angle = std::atan2(py, px);
+        float tooth_phase = std::cos(angle * 8.0f);
+        float max_r = 0.54f + 0.20f * std::clamp((tooth_phase + 0.2f) * 2.0f, 0.0f, 1.0f);
+        return r <= max_r;
+    });
+    tex_settings_ = create_texture_from_alpha_mask(mask_settings, N, N);
+
+    // 12. KOSZ: Kosz na śmieci z pokrywą i żebrowaniem
+    auto mask_trash = compute_mask([](float px, float py) {
+        // Uchwyt pokrywy
+        if (py >= -0.76f && py <= -0.62f && std::abs(px) <= 0.20f) {
+            if (std::abs(px) >= 0.12f || py <= -0.70f) return true;
+        }
+        // Pokrywa
+        if (py >= -0.62f && py <= -0.48f && std::abs(px) <= 0.65f) return true;
+
+        // Korpus kosza
+        if (py >= -0.42f && py <= 0.70f) {
+            float t = (py - (-0.42f)) / 1.12f;
+            float max_w = 0.54f * (1.0f - t) + 0.40f * t;
+
+            if (std::abs(px) <= max_w) {
+                if (std::abs(px) >= (max_w - 0.07f)) return true;
+                if (py >= 0.63f) return true;
+                if (std::abs(px) <= 0.045f) return true;
+                if (std::abs(std::abs(px) - max_w * 0.5f) <= 0.045f) return true;
+            }
+        }
+        return false;
+    });
+    tex_trash_ = create_texture_from_alpha_mask(mask_trash, N, N);
 }
 
 bool StatusIconRenderer::initialize(uint32_t screen_width, uint32_t screen_height) {
@@ -220,6 +391,13 @@ void StatusIconRenderer::draw_icon(StatusIconType type, float x, float y, float 
         case StatusIconType::Wifi: tex = tex_wifi_; break;
         case StatusIconType::Spotlight: tex = tex_spotlight_; break;
         case StatusIconType::ControlCenter: tex = tex_control_center_; break;
+        case StatusIconType::Finder: tex = tex_finder_; break;
+        case StatusIconType::Terminal: tex = tex_terminal_; break;
+        case StatusIconType::Calculator: tex = tex_calculator_; break;
+        case StatusIconType::Sysmon: tex = tex_sysmon_; break;
+        case StatusIconType::Visualizer: tex = tex_visualizer_; break;
+        case StatusIconType::Settings: tex = tex_settings_; break;
+        case StatusIconType::Trash: tex = tex_trash_; break;
     }
     if (!tex) return;
 
@@ -251,6 +429,13 @@ void StatusIconRenderer::shutdown() {
     if (tex_wifi_) { glDeleteTextures(1, &tex_wifi_); tex_wifi_ = 0; }
     if (tex_spotlight_) { glDeleteTextures(1, &tex_spotlight_); tex_spotlight_ = 0; }
     if (tex_control_center_) { glDeleteTextures(1, &tex_control_center_); tex_control_center_ = 0; }
+    if (tex_finder_) { glDeleteTextures(1, &tex_finder_); tex_finder_ = 0; }
+    if (tex_terminal_) { glDeleteTextures(1, &tex_terminal_); tex_terminal_ = 0; }
+    if (tex_calculator_) { glDeleteTextures(1, &tex_calculator_); tex_calculator_ = 0; }
+    if (tex_sysmon_) { glDeleteTextures(1, &tex_sysmon_); tex_sysmon_ = 0; }
+    if (tex_visualizer_) { glDeleteTextures(1, &tex_visualizer_); tex_visualizer_ = 0; }
+    if (tex_settings_) { glDeleteTextures(1, &tex_settings_); tex_settings_ = 0; }
+    if (tex_trash_) { glDeleteTextures(1, &tex_trash_); tex_trash_ = 0; }
 
     if (vao_) { glDeleteVertexArrays(1, &vao_); vao_ = 0; }
     if (vbo_) { glDeleteBuffers(1, &vbo_); vbo_ = 0; }

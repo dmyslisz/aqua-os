@@ -39,6 +39,28 @@ public:
     void shutdown();
 
     size_t window_count() const { return windows_.size(); }
+    const std::vector<std::shared_ptr<Window>>& windows() const { return windows_; }
+
+    std::shared_ptr<Window> find_window_by_title(const std::string& query) const {
+        for (auto it = windows_.rbegin(); it != windows_.rend(); ++it) {
+            if ((*it)->title().find(query) != std::string::npos) {
+                return *it;
+            }
+        }
+        return nullptr;
+    }
+
+    bool bring_to_front(uint32_t id) {
+        for (auto it = windows_.begin(); it != windows_.end(); ++it) {
+            if ((*it)->id() == id) {
+                auto win = *it;
+                windows_.erase(it);
+                windows_.push_back(win);
+                return true;
+            }
+        }
+        return false;
+    }
 
 private:
     void render_window(const Window& win, float cursor_x, float cursor_y);

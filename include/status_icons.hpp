@@ -10,7 +10,16 @@ enum class StatusIconType {
     Battery,
     Wifi,
     Spotlight,
-    ControlCenter
+    ControlCenter,
+
+    // Ikony aplikacji Docka
+    Finder,
+    Terminal,
+    Calculator,
+    Sysmon,
+    Visualizer,
+    Settings,
+    Trash
 };
 
 class StatusIconRenderer {
@@ -39,6 +48,15 @@ private:
     GLuint tex_wifi_{0};
     GLuint tex_spotlight_{0};
     GLuint tex_control_center_{0};
+
+    // Tekstury ikon Docka
+    GLuint tex_finder_{0};
+    GLuint tex_terminal_{0};
+    GLuint tex_calculator_{0};
+    GLuint tex_sysmon_{0};
+    GLuint tex_visualizer_{0};
+    GLuint tex_settings_{0};
+    GLuint tex_trash_{0};
 
     GLint u_screen_size_{-1};
     GLint u_rect_{-1};
