@@ -99,7 +99,6 @@ public:
                     if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                         break;
                     }
-                    // Shell zakończył działanie
                     if (n == 0 || (n < 0 && errno == EIO)) {
                         close();
                     }
@@ -123,7 +122,6 @@ public:
     }
 
     void on_key_down(uint32_t key_code) override {
-        // Śledzenie modyfikatorów
         if (key_code == 42 || key_code == 54) { shift_down_ = true; return; }
         if (key_code == 29 || key_code == 97) { ctrl_down_ = true; return; }
         if (key_code == 56 || key_code == 100) { alt_down_ = true; return; }
@@ -133,7 +131,6 @@ public:
         std::string out = translate_key(key_code);
         if (!out.empty()) {
             write(pty_master_, out.data(), out.size());
-            // Zresetuj miganie kursora, aby kursor był od razu widoczny przy pisaniu
             cursor_visible_ = true;
             blink_timer_ = 0.0f;
             request_redraw();
@@ -154,11 +151,10 @@ public:
         // Tło okna Terminala: macOS Dark Glass (półprzezroczysty grafit)
         canvas.clear(Color(18, 18, 20, 225));
 
-        // Rysowanie komórek siatki znakowej
         const int char_w = 9;
         const int char_h = 18;
         const int pad_x = 12;
-        const int pad_y = 34; // Poniżej paska tytułowego okna
+        const int pad_y = 34;
 
         for (int r = 0; r < rows_; ++r) {
             int py = pad_y + r * char_h;
@@ -170,12 +166,10 @@ public:
 
                 const auto& cell = grid_[r][c];
 
-                // Rysuj tło komórki jeśli zdefiniowane
                 if (cell.bg < 16) {
                     canvas.fill_rect(px, py, char_w, char_h, ANSI_PALETTE[cell.bg]);
                 }
 
-                // Rysuj znak
                 if (cell.c != ' ' && static_cast<unsigned char>(cell.c) >= 32) {
                     Color fg_col = (cell.fg < 16) ? ANSI_PALETTE[cell.fg] : Color(220, 220, 225, 255);
                     if (cell.reverse) {
@@ -191,11 +185,9 @@ public:
             int cx = pad_x + cursor_x_ * char_w;
             int cy = pad_y + cursor_y_ * char_h;
 
-            // Prostokątny kursor w kolorze jasnego szafiru macOS (#528BFF)
             Color cursor_col(82, 139, 255, 210);
             canvas.fill_rect(cx, cy, char_w, char_h, cursor_col);
 
-            // Znak pod kursorem rysowany w kolorze odwróconym
             char under_c = grid_[cursor_y_][cursor_x_].c;
             if (under_c != ' ' && static_cast<unsigned char>(under_c) >= 32) {
                 canvas.draw_char(cx + 1, cy + 1, under_c, Color(10, 10, 15, 255));
@@ -204,6 +196,40 @@ public:
     }
 
 private:
+    enum class ParserState {
+        Normal,
+        Esc,
+        CSI,
+        OSC
+    };
+
+    int cols_{80};
+    int rows_{24};
+    int cursor_x_{0};
+    int cursor_y_{0};
+    int saved_x_{0};
+    int saved_y_{0};
+
+    bool cursor_visible_{true};
+    float blink_timer_{0.0f};
+
+    bool shift_down_{false};
+    bool ctrl_down_{false};
+    bool alt_down_{false};
+
+    int pty_master_{-1};
+    pid_t child_pid_{-1};
+    std::vector<std::vector<TermCell>> grid_;
+
+    ParserState parser_state_{ParserState::Normal};
+    std::string csi_params_;
+    std::string osc_string_;
+
+    uint8_t cur_fg_{7};
+    uint8_t cur_bg_{255};
+    bool cur_bold_{false};
+    bool cur_reverse_{false};
+
     void recalculate_grid() {
         const int char_w = 9;
         const int char_h = 18;
@@ -510,14 +536,12 @@ private:
     }
 
     std::string translate_key(uint32_t code) {
-        // Klawisze specjalne
         if (code == 14) return "\x7f"; // Backspace
         if (code == 28 || code == 96) return "\r"; // Enter
         if (code == 15) return "\t"; // Tab
         if (code == 1) return "\033"; // Escape
         if (code == 57) return " "; // Spacja
 
-        // Strzałki i nawigacja
         if (code == 103) return "\033[A"; // Up
         if (code == 108) return "\033[B"; // Down
         if (code == 106) return "\033[C"; // Right
@@ -528,7 +552,6 @@ private:
         if (code == 109) return "\033[6~"; // Page Down
         if (code == 111) return "\033[3~"; // Delete
 
-        // Litery A..Z
         static const struct { uint32_t code; char normal; char shifted; } LETTER_MAP[] = {
             {16, 'q', 'Q'}, {17, 'w', 'W'}, {18, 'e', 'E'}, {19, 'r', 'R'}, {20, 't', 'T'},
             {21, 'y', 'Y'}, {22, 'u', 'U'}, {23, 'i', 'I'}, {24, 'o', 'O'}, {25, 'p', 'P'},
@@ -541,7 +564,6 @@ private:
         for (const auto& item : LETTER_MAP) {
             if (item.code == code) {
                 if (ctrl_down_) {
-                    // Ctrl+A = 1, Ctrl+C = 3, itd.
                     char c = static_cast<char>(item.normal - 'a' + 1);
                     return std::string(1, c);
                 }
@@ -549,7 +571,6 @@ private:
             }
         }
 
-        // Cyfry i znaki górnego rzędu
         static const struct { uint32_t code; char normal; char shifted; } NUM_MAP[] = {
             {2, '1', '!'}, {3, '2', '@'}, {4, '3', '#'}, {5, '4', '$'}, {6, '5', '%'},
             {7, '6', '^'}, {8, '7', '&'}, {9, '8', '*'}, {10, '9', '('}, {11, '0', ')'},
@@ -564,7 +585,7 @@ private:
                     if (code == 12) return "\x1f"; // Ctrl+-
                     if (code == 26) return "\x1b"; // Ctrl+[
                     if (code == 27) return "\x1d"; // Ctrl+]
-                    if (code == 43) return "\x1c"; // Ctrl+\
+                    if (code == 43) return "\x1c"; // Ctrl+Backslash
                 }
                 return std::string(1, shift_down_ ? item.shifted : item.normal);
             }
@@ -572,40 +593,6 @@ private:
 
         return "";
     }
-
-    enum class ParserState {
-        Normal,
-        Esc,
-        CSI,
-        OSC
-    };
-
-    ParserState parser_state_{ParserState::Normal};
-    std::string csi_params_;
-    std::string osc_string_;
-
-    uint8_t cur_fg_{7};
-    uint8_t cur_bg_{255};
-    bool cur_bold_{false};
-    bool cur_reverse_{false};
-
-    int cols_{80};
-    int rows_{24};
-    int cursor_x_{0};
-    int cursor_y_{0};
-    int saved_x_{0};
-    int saved_y_{0};
-
-    bool cursor_visible_{true};
-    float blink_timer_{0.0f};
-
-    bool shift_down_{false};
-    bool ctrl_down_{false};
-    bool alt_down_{false};
-
-    int pty_master_{-1};
-    pid_t child_pid_{-1};
-    std::vector<std::vector<TermCell>> grid_;
 };
 
 } // namespace aqua
