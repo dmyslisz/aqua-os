@@ -115,7 +115,8 @@ bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
                     FragColor = vec4(0.0, 0.0, 0.0, 0.18);
                 } else {
                     if (u_has_blur == 1) {
-                        vec2 screen_uv = (u_rect.xy + v_local_pos) / u_screen_size;
+                        vec2 screen_pos = u_rect.xy + v_local_pos;
+                        vec2 screen_uv = vec2(screen_pos.x / u_screen_size.x, 1.0 - (screen_pos.y / u_screen_size.y));
                         vec3 blurred = texture(u_blur_tex, screen_uv).rgb;
                         // macOS Frosted Glass: mleczne zabarwienie matowego szkła
                         vec3 frosted = mix(blurred, vec3(0.96, 0.96, 0.98), 0.45);
@@ -134,7 +135,8 @@ bool DesktopShell::initialize(uint32_t screen_width, uint32_t screen_height) {
             vec4 col = u_color;
 
             if (u_type == 1 && u_has_blur == 1) {
-                vec2 screen_uv = (u_rect.xy + v_local_pos) / u_screen_size;
+                vec2 screen_pos = u_rect.xy + v_local_pos;
+                vec2 screen_uv = vec2(screen_pos.x / u_screen_size.x, 1.0 - (screen_pos.y / u_screen_size.y));
                 vec3 blurred = texture(u_blur_tex, screen_uv).rgb;
                 // macOS Sequoia Glass Tint: jasne, krystalicznie matowe szkło
                 vec3 frosted = mix(blurred, vec3(0.97, 0.97, 0.99), 0.50);
