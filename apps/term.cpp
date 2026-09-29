@@ -14,6 +14,7 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
+#include <signal.h>
 #include <cstdlib>
 #include <cstring>
 #include <cerrno>
@@ -262,7 +263,7 @@ private:
         ws.ws_row = static_cast<unsigned short>(rows_);
         ioctl(pty_master_, TIOCSWINSZ, &ws);
         if (child_pid_ > 0) {
-            kill(child_pid_, SIGWINCH);
+            ::kill(child_pid_, SIGWINCH);
         }
     }
 
@@ -271,35 +272,35 @@ private:
         if (pty_master_ < 0) return false;
 
         if (grantpt(pty_master_) != 0 || unlockpt(pty_master_) != 0) {
-            close(pty_master_);
+            ::close(pty_master_);
             pty_master_ = -1;
             return false;
         }
 
         const char* pts_name = ptsname(pty_master_);
         if (!pts_name) {
-            close(pty_master_);
+            ::close(pty_master_);
             pty_master_ = -1;
             return false;
         }
 
         int slave_fd = open(pts_name, O_RDWR | O_NOCTTY);
         if (slave_fd < 0) {
-            close(pty_master_);
+            ::close(pty_master_);
             pty_master_ = -1;
             return false;
         }
 
         child_pid_ = fork();
         if (child_pid_ < 0) {
-            close(slave_fd);
-            close(pty_master_);
+            ::close(slave_fd);
+            ::close(pty_master_);
             pty_master_ = -1;
             return false;
         }
 
         if (child_pid_ == 0) {
-            close(pty_master_);
+            ::close(pty_master_);
             setsid();
 #if defined(TIOCSCTTY)
             ioctl(slave_fd, TIOCSCTTY, 0);
@@ -307,7 +308,7 @@ private:
             dup2(slave_fd, STDIN_FILENO);
             dup2(slave_fd, STDOUT_FILENO);
             dup2(slave_fd, STDERR_FILENO);
-            close(slave_fd);
+            ::close(slave_fd);
 
             struct winsize ws{};
             ws.ws_col = static_cast<unsigned short>(cols_);
@@ -328,7 +329,7 @@ private:
             _exit(127);
         }
 
-        close(slave_fd);
+        ::close(slave_fd);
         int flags = fcntl(pty_master_, F_GETFL, 0);
         fcntl(pty_master_, F_SETFL, flags | O_NONBLOCK);
         return true;
@@ -336,13 +337,13 @@ private:
 
     void cleanup_pty() {
         if (child_pid_ > 0) {
-            kill(child_pid_, SIGHUP);
+            ::kill(child_pid_, SIGHUP);
             int status = 0;
             waitpid(child_pid_, &status, WNOHANG);
             child_pid_ = -1;
         }
         if (pty_master_ >= 0) {
-            close(pty_master_);
+            ::close(pty_master_);
             pty_master_ = -1;
         }
     }
@@ -597,8 +598,8 @@ private:
 
 } // namespace aqua
 
-int main() {
-    aqua::Application app;
+int main(int argc, char* argv[]) {
+    aqua::Application app(argc, argv, "Terminal");
     if (!app.initialize()) {
         std::cerr << "[Terminal] Blad polaczenia z aqua-server!" << std::endl;
         return 1;
@@ -607,5 +608,5 @@ int main() {
     auto win = std::make_shared<aqua::TerminalWindow>(780, 480);
     app.add_window(win);
 
-    return app.run(60);
+    return app.run();
 }
