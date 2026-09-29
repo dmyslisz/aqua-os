@@ -166,11 +166,11 @@ public:
         const int pad_x = 12;
         const int pad_y = 34;
 
-        for (int r = 0; r < rows_; ++r) {
+        for (int r = 0; r < rows_ && r < static_cast<int>(grid_.size()); ++r) {
             int py = pad_y + r * char_h;
             if (py + char_h > static_cast<int>(height())) break;
 
-            for (int c = 0; c < cols_; ++c) {
+            for (int c = 0; c < cols_ && c < static_cast<int>(grid_[r].size()); ++c) {
                 int px = pad_x + c * char_w;
                 if (px + char_w > static_cast<int>(width())) break;
 
@@ -191,7 +191,8 @@ public:
         }
 
         // Rysowanie kursora tekstowego macOS
-        if (cursor_visible_ && cursor_y_ >= 0 && cursor_y_ < rows_ && cursor_x_ >= 0 && cursor_x_ < cols_) {
+        if (cursor_visible_ && cursor_y_ >= 0 && cursor_y_ < static_cast<int>(grid_.size()) &&
+            cursor_x_ >= 0 && cursor_x_ < static_cast<int>(grid_[cursor_y_].size())) {
             int cx = pad_x + cursor_x_ * char_w;
             int cy = pad_y + cursor_y_ * char_h;
 
@@ -213,8 +214,8 @@ private:
         OSC
     };
 
-    int cols_{80};
-    int rows_{24};
+    int cols_{0};
+    int rows_{0};
     int cursor_x_{0};
     int cursor_y_{0};
     int saved_x_{0};
@@ -251,9 +252,13 @@ private:
 
         std::vector<std::vector<TermCell>> new_grid(new_rows, std::vector<TermCell>(new_cols));
 
-        for (int r = 0; r < std::min(rows_, new_rows); ++r) {
-            for (int c = 0; c < std::min(cols_, new_cols); ++c) {
-                new_grid[r][c] = grid_[r][c];
+        if (!grid_.empty()) {
+            int max_r = std::min({rows_, new_rows, static_cast<int>(grid_.size())});
+            for (int r = 0; r < max_r; ++r) {
+                int max_c = std::min({cols_, new_cols, static_cast<int>(grid_[r].size())});
+                for (int c = 0; c < max_c; ++c) {
+                    new_grid[r][c] = grid_[r][c];
+                }
             }
         }
 
@@ -261,8 +266,8 @@ private:
         rows_ = new_rows;
         grid_ = std::move(new_grid);
 
-        cursor_x_ = std::clamp(cursor_x_, 0, cols_ - 1);
-        cursor_y_ = std::clamp(cursor_y_, 0, rows_ - 1);
+        cursor_x_ = std::clamp(cursor_x_, 0, std::max(0, cols_ - 1));
+        cursor_y_ = std::clamp(cursor_y_, 0, std::max(0, rows_ - 1));
     }
 
     void notify_pty_size() {
@@ -325,13 +330,14 @@ private:
     }
 
     void scroll_up() {
-        for (int r = 0; r < rows_ - 1; ++r) {
-            grid_[r] = grid_[r + 1];
+        if (rows_ <= 0 || grid_.empty()) return;
+        for (int r = 0; r < rows_ - 1 && r + 1 < static_cast<int>(grid_.size()); ++r) {
+            grid_[r] = std::move(grid_[r + 1]);
         }
-        for (int c = 0; c < cols_; ++c) {
-            grid_[rows_ - 1][c] = TermCell{' ', cur_fg_, cur_bg_, false, false};
+        if (rows_ - 1 >= 0 && rows_ - 1 < static_cast<int>(grid_.size())) {
+            grid_[rows_ - 1] = std::vector<TermCell>(cols_, TermCell{' ', cur_fg_, cur_bg_, false, false});
         }
-        cursor_y_ = rows_ - 1;
+        cursor_y_ = std::max(0, rows_ - 1);
     }
 
     void process_char(char c) {
@@ -357,7 +363,10 @@ private:
                         cursor_y_++;
                         if (cursor_y_ >= rows_) scroll_up();
                     }
-                    grid_[cursor_y_][cursor_x_] = TermCell{c, cur_fg_, cur_bg_, cur_bold_, cur_reverse_};
+                    if (cursor_y_ >= 0 && cursor_y_ < static_cast<int>(grid_.size()) &&
+                        cursor_x_ >= 0 && cursor_x_ < static_cast<int>(grid_[cursor_y_].size())) {
+                        grid_[cursor_y_][cursor_x_] = TermCell{c, cur_fg_, cur_bg_, cur_bold_, cur_reverse_};
+                    }
                     cursor_x_++;
                 }
                 break;
@@ -450,28 +459,36 @@ private:
             }
             case 'J': { // Erase in Display
                 if (p0 == 2 || p0 == 3) {
-                    for (int r = 0; r < rows_; ++r) {
-                        for (int c = 0; c < cols_; ++c) {
+                    for (int r = 0; r < rows_ && r < static_cast<int>(grid_.size()); ++r) {
+                        for (int c = 0; c < cols_ && c < static_cast<int>(grid_[r].size()); ++c) {
                             grid_[r][c] = TermCell{' ', cur_fg_, 255, false, false};
                         }
                     }
                     cursor_x_ = 0;
                     cursor_y_ = 0;
                 } else if (p0 == 0) {
-                    for (int c = cursor_x_; c < cols_; ++c) grid_[cursor_y_][c] = TermCell{' ', cur_fg_, 255, false, false};
-                    for (int r = cursor_y_ + 1; r < rows_; ++r) {
-                        for (int c = 0; c < cols_; ++c) grid_[r][c] = TermCell{' ', cur_fg_, 255, false, false};
+                    if (cursor_y_ >= 0 && cursor_y_ < static_cast<int>(grid_.size())) {
+                        for (int c = cursor_x_; c < cols_ && c < static_cast<int>(grid_[cursor_y_].size()); ++c) {
+                            grid_[cursor_y_][c] = TermCell{' ', cur_fg_, 255, false, false};
+                        }
+                    }
+                    for (int r = cursor_y_ + 1; r < rows_ && r < static_cast<int>(grid_.size()); ++r) {
+                        for (int c = 0; c < cols_ && c < static_cast<int>(grid_[r].size()); ++c) {
+                            grid_[r][c] = TermCell{' ', cur_fg_, 255, false, false};
+                        }
                     }
                 }
                 break;
             }
             case 'K': { // Erase in Line
-                if (p0 == 0) {
-                    for (int c = cursor_x_; c < cols_; ++c) grid_[cursor_y_][c] = TermCell{' ', cur_fg_, 255, false, false};
-                } else if (p0 == 1) {
-                    for (int c = 0; c <= cursor_x_; ++c) grid_[cursor_y_][c] = TermCell{' ', cur_fg_, 255, false, false};
-                } else if (p0 == 2) {
-                    for (int c = 0; c < cols_; ++c) grid_[cursor_y_][c] = TermCell{' ', cur_fg_, 255, false, false};
+                if (cursor_y_ >= 0 && cursor_y_ < static_cast<int>(grid_.size())) {
+                    if (p0 == 0) {
+                        for (int c = cursor_x_; c < cols_ && c < static_cast<int>(grid_[cursor_y_].size()); ++c) grid_[cursor_y_][c] = TermCell{' ', cur_fg_, 255, false, false};
+                    } else if (p0 == 1) {
+                        for (int c = 0; c <= cursor_x_ && c < static_cast<int>(grid_[cursor_y_].size()); ++c) grid_[cursor_y_][c] = TermCell{' ', cur_fg_, 255, false, false};
+                    } else if (p0 == 2) {
+                        for (int c = 0; c < cols_ && c < static_cast<int>(grid_[cursor_y_].size()); ++c) grid_[cursor_y_][c] = TermCell{' ', cur_fg_, 255, false, false};
+                    }
                 }
                 break;
             }
